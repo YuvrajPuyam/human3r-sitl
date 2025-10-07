@@ -1,5 +1,5 @@
 <h2 align="center">
-  <img src="https://github.com/user-attachments/assets/b73aa2e8-8175-4562-a3df-f099a10fd1d3" height="24" style="vertical-align: bottom; margin-right: 0px;" />
+  <img src="https://github.com/user-attachments/assets/11fde037-40f6-4406-aa31-b35ae7f2d381" height="24" style="vertical-align: bottom; margin-right: 0px;" />
   <a href="https://fanegg.github.io/Human3R">Human3R: Everyone Everywhere All at Once</a>
 </h2>
 
@@ -23,7 +23,7 @@ TL;DR: Inference with One model, One stage; Training in One day using One GPU
 </div>
 <br>
 
-https://github.com/user-attachments/assets/f75c5c7f-95d3-4bc8-b926-40ea2d71bb7e
+https://github.com/user-attachments/assets/47fc7ecf-5235-471c-84b9-ccfeca6d56ea
 
 ## Getting Started
 
