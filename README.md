@@ -59,7 +59,7 @@ cd ../../../../
 ```
 
 ### Download
-Run the following commands to download all models and checkpoints into the `src/models` directory. The first command will prompt you to register and log in to access each version of SMPL.
+Run the following commands to download all models and checkpoints into the `src/` directory. The first command will prompt you to register and log in to access each version of SMPL.
 ```Bash
 # SMPLX family models
 bash scripts/fetch_smplx.sh

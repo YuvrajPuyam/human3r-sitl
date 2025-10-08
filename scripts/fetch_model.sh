@@ -6,8 +6,8 @@ gdown --fuzzy https://drive.google.com/file/d/1Asz-ZB3FfpzZYwunhQvNPZEUA8XUNAYD/
 cd ..
 
 # Download MultiHMR model
-mkdir -p src/models/multihmr
+mkdir -p src/models/multiHMR
 wget https://download.europe.naverlabs.com/ComputerVision/MultiHMR/multiHMR_896_L.pt \
-    -O './src/models/multihmr/multiHMR_896_L.pt' \
+    -O './src/models/multiHMR/multiHMR_896_L.pt' \
     --no-check-certificate \
     --continue
