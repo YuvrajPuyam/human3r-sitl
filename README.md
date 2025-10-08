@@ -95,7 +95,7 @@ Our code is based on the following awesome repositories:
 - [CUT3R](https://github.com/CUT3R/CUT3R), [TTT3R](https://github.com/Inception3D/TTT3R), [Multi-HMR](https://github.com/naver/multi-hmr), [PromptHMR](https://github.com/yufu-wang/PromptHMR), [GVHMR](https://github.com/zju3dv/GVHMR), [MonST3R](https://github.com/Junyi42/monst3r.git), [Easi3R](https://github.com/Inception3D/Easi3R), [DUSt3R](https://github.com/naver/dust3r), [Viser](https://github.com/nerfstudio-project/viser), [BEDLAM](https://github.com/pixelite1201/BEDLAM)
 
 We thank the authors for releasing their code!
-<!-- 
+
 ## Citation
 
 If you find our work useful, please cite:
@@ -104,7 +104,7 @@ If you find our work useful, please cite:
 @article{chen2025human3r,
     title={Human3R: Everyone Everywhere All at Once},
     author={Chen, Yue and Chen, Xingyu and Xue, Yuxuan and Chen, Anpei and Xiu, Yuliang and Gerard, Pons-Moll},
-    journal={arXiv preprint arXiv:2510.xxxxx},
+    journal={arXiv preprint arXiv:2510.06219},
     year={2025}
     }
-``` -->
+```
