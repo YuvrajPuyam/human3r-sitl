@@ -5,16 +5,16 @@
 
 <h5 align="center">
 
-[![arXiv](https://img.shields.io/badge/Arxiv-2510.xxxxx-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2510.xxxxx) 
+[![arXiv](https://img.shields.io/badge/Arxiv-2510.06219-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2510.06219) 
 [![Home Page](https://img.shields.io/badge/Project-Website-C27185.svg)](https://fanegg.github.io/Human3R) 
 [![X](https://img.shields.io/badge/@Yue%20Chen-black?logo=X)](https://twitter.com/faneggchen)  [![Bluesky](https://img.shields.io/badge/@Yue%20Chen-white?logo=Bluesky)](https://bsky.app/profile/fanegg.bsky.social)
 
 
 [Yue Chen](https://fanegg.github.io/),
-[Xingyu Chen](https://rover-xingyu.github.io/),
+[Xingyu Chen](https://rover-xingyu.github.io/)*,
 [Yuxuan Xue](https://yuxuan-xue.com/),
 [Anpei Chen](https://apchenstu.github.io/),
-[Yuliang Xiu](https://xiuyuliang.cn/),
+[Yuliang Xiu](https://xiuyuliang.cn/)†,
 [Gerard Pons-Moll](https://virtualhumans.mpi-inf.mpg.de/)
 </h5>
 
