@@ -54,7 +54,7 @@ docs/_build/
 data
 src/checkpoints
 
-examples
+# examples
 tmp
 command
 

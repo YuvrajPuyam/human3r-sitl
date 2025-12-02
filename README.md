@@ -65,7 +65,7 @@ Run the following commands to download all models and checkpoints into the `src/
 bash scripts/fetch_smplx.sh
 
 # Human3R checkpoints
-huggingface-cli download faneggg/human3r human3r.pth --local-dir ./src
+huggingface-cli download faneggg/human3r human3r_896L.pth --local-dir ./src
 ```
 
 ### Inference Demo
@@ -79,7 +79,7 @@ CUDA_VISIBLE_DEVICES=0 python demo.py --model_path MODEL_PATH --size 512 \
     --vis_threshold 2 --downsample_factor 1 --reset_interval 100
 
 # Example:
-CUDA_VISIBLE_DEVICES=0 python demo.py --model_path src/human3r.pth --size 512 --seq_path examples/GoodMornin1.mp4 --subsample 1 --use_ttt3r --vis_threshold 2 --downsample_factor 1 --reset_interval 100 --output_dir tmp
+CUDA_VISIBLE_DEVICES=0 python demo.py --model_path src/human3r_896L.pth --size 512 --seq_path examples/GoodMornin1.mp4 --subsample 1 --use_ttt3r --vis_threshold 2 --downsample_factor 1 --reset_interval 100 --output_dir tmp
 ```
 Output results will be saved to `output_dir`.
 

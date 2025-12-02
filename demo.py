@@ -10,7 +10,7 @@ Use the command-line arguments to adjust parameters
 such as the model checkpoint path, image sequence directory, image size, device, etc.
 
 Example:
-    python demo.py --model_path src/human3r.pth --size 512 \
+    python demo.py --model_path src/human3r_896L.pth --size 512 \
         --seq_path examples/GoodMornin1.mp4 --subsample 1 --vis_threshold 2 \
         --downsample_factor 1 --use_ttt3r --reset_interval 100
 """
@@ -82,14 +82,19 @@ def parse_args():
         help="value for tempfile.tempdir",
     )
     parser.add_argument(
-        "--save_smpl",
+        "--save",
         action="store_true",
-        help="Save smpl results.",
+        help="Save output results.",
     )
     parser.add_argument(
-        "--save_video",
+        "--render",
         action="store_true",
-        help="Save smpl video.",
+        help="Save smpl mesh projection.",
+    )
+    parser.add_argument(
+        "--render_video",
+        action="store_true",
+        help="Save smpl mesh projection video.",
     )
     parser.add_argument(
         "--max_frames",
@@ -274,7 +279,7 @@ def prepare_input(
 
 def prepare_output(
         outputs, outdir, revisit=1, use_pose=True, 
-        save_smpl=False, save_video=False, img_res=None, subsample=1):
+        save=False, render=False, render_video=False, img_res=None, subsample=1):
     """
     Process inference outputs to generate point clouds and camera parameters for visualization.
 
@@ -282,11 +287,9 @@ def prepare_output(
         outputs (dict): Inference outputs.
         revisit (int): Number of revisits per view.
         use_pose (bool): Whether to transform points using camera pose.
-        save_smpl (bool): Whether to save smpl results.
-        save_video (bool): Whether to save smpl video.
-
-    Returns:
-        tuple: (points, colors, confidence, camera parameters dictionary)
+        save (bool): Whether to save output results.
+        render (bool): Whether to save smpl mesh projection.
+        render_video (bool): Whether to save smpl mesh projection video.
     """
     from src.dust3r.utils.camera import pose_encoding_to_camera
     from src.dust3r.post_process import estimate_focal_knowing_depth
@@ -395,7 +398,7 @@ def prepare_output(
     # K_mhmr = [output.get(
     #     "K_mhmr", torch.empty(1,0,3))[0] for output in outputs["views"]]
         
-    if save_smpl:
+    if render:
         smpl_scores = [
             output["smpl_scores"][...,0] for output in outputs["pred"]]
         if img_res is not None:
@@ -418,10 +421,12 @@ def prepare_output(
                             person_center='head')
     smpl_faces = smpl_layer.bm_x.faces
 
-    # os.makedirs(os.path.join(outdir, "depth"), exist_ok=True)
-    # os.makedirs(os.path.join(outdir, "conf"), exist_ok=True)
-    # os.makedirs(os.path.join(outdir, "color"), exist_ok=True)
-    # os.makedirs(os.path.join(outdir, "camera"), exist_ok=True)
+    if save:
+        os.makedirs(os.path.join(outdir, "depth"), exist_ok=True)
+        os.makedirs(os.path.join(outdir, "conf"), exist_ok=True)
+        os.makedirs(os.path.join(outdir, "color"), exist_ok=True)
+        os.makedirs(os.path.join(outdir, "camera"), exist_ok=True)
+        os.makedirs(os.path.join(outdir, "smpl"), exist_ok=True)
 
     all_verts = []
     for f_id in range(B):
@@ -453,7 +458,7 @@ def prepare_output(
             pr_faces = []
             all_verts.append(torch.empty(0))
 
-        if save_smpl:
+        if render:
             hm = vis_heatmap(colors_tosave[f_id], smpl_scores[f_id]).numpy()
             img_array_np = (color * 255).astype(np.uint8)
             smpl_rend = render_meshes(img_array_np.copy(), pr_verts, pr_faces,
@@ -473,37 +478,37 @@ def prepare_output(
                     (hm * 255).astype(np.uint8), 
                     smpl_rend], 1)
         
-        # np.save(os.path.join(outdir, "depth", f"{f_id:06d}.npy"), depth)
-        # np.save(os.path.join(outdir, "conf", f"{f_id:06d}.npy"), conf)
-        # iio.imwrite(
-        #     os.path.join(outdir, "color", f"{f_id:06d}.png"),
-        #     (color * 255).astype(np.uint8),
-        # )
-        # np.savez(
-        #     os.path.join(outdir, "camera", f"{f_id:06d}.npz"),
-        #     pose=c2w,
-        #     intrinsics=intrins,
-        # )
+        if save:
+            np.save(os.path.join(outdir, "depth", f"{f_id:06d}.npy"), depth)
+            np.save(os.path.join(outdir, "conf", f"{f_id:06d}.npy"), conf)
+            iio.imwrite(
+                os.path.join(outdir, "color", f"{f_id:06d}.png"),
+                (color * 255).astype(np.uint8),
+            )
+            np.savez(
+                os.path.join(outdir, "camera", f"{f_id:06d}.npz"),
+                pose=c2w,
+                intrinsics=intrins,
+            )
+            np.savez(
+                os.path.join(outdir, "smpl", f"{f_id:06d}.npz"),
+                scores=smpl_scores[f_id].numpy(),
+                msk=msks[f_id].numpy() if has_mask else None,
+                shape=smpl_shape[f_id].numpy(),
+                rotvec=smpl_rotvec[f_id].numpy(),
+                transl=smpl_transl[f_id].numpy(),
+                expression=smpl_expression[f_id].numpy() if smpl_expression[f_id] is not None else None
+            )
 
-        # Save smpl results
-        if save_smpl:
+        # Save smpl projection
+        if render:
             os.makedirs(os.path.join(outdir, "color_smpl"), exist_ok=True)
             iio.imwrite(
                 os.path.join(outdir, "color_smpl", f"{f_id:06d}.png"),
                 color_smpl,
             )
-            # os.makedirs(os.path.join(outdir, "smpl"), exist_ok=True)
-            # np.savez(
-            #     os.path.join(outdir, "smpl", f"{f_id:06d}.npz"),
-            #     scores=smpl_scores[f_id].numpy(),
-            #     msk=msks[f_id].numpy() if has_mask else None,
-            #     shape=smpl_shape[f_id].numpy(),
-            #     rotvec=smpl_rotvec[f_id].numpy(),
-            #     transl=smpl_transl[f_id].numpy(),
-            #     expression=smpl_expression[f_id].numpy() if smpl_expression[f_id] is not None else None
-            # )
 
-    if save_smpl and save_video:
+    if render and render_video:
         frames_dir = os.path.join(outdir, "color_smpl")
         video_path = os.path.join(outdir, "output_video.mp4")
         output_fps = 30 // subsample
@@ -634,7 +639,7 @@ def run_inference(args):
         msks,
         ) = prepare_output(
         outputs, args.output_dir, 1, True, 
-        args.save_smpl, args.save_video, img_res, args.subsample
+        args.render, args.render_video, img_res, args.subsample
     )
 
     # Convert tensors to numpy arrays for visualization.
