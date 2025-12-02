@@ -79,12 +79,19 @@ CUDA_VISIBLE_DEVICES=0 python demo.py --model_path MODEL_PATH --size 512 \
     --vis_threshold 2 --downsample_factor 1 --reset_interval 100
 
 # Example:
-CUDA_VISIBLE_DEVICES=0 python demo.py --model_path src/human3r_896L.pth --size 512 --seq_path examples/GoodMornin1.mp4 --subsample 1 --use_ttt3r --vis_threshold 2 --downsample_factor 1 --reset_interval 100 --output_dir tmp
+# To save the results, append `--save --output_dir tmp` to the command.
+CUDA_VISIBLE_DEVICES=0 python demo.py --model_path src/human3r_896L.pth \
+    --size 512 --seq_path examples/GoodMornin1.mp4 \
+    --subsample 1 --use_ttt3r --vis_threshold 2 \
+    --downsample_factor 1 --reset_interval 100
+
 ```
-Output results will be saved to `output_dir`.
 
 ### Evaluation
 Please refer to the [eval.md](docs/eval.md) for more details.
+
+### Model Cards
+Please refer to the [inference.md](docs/inference.md) for using different backbones.
 
 ### Training
 Please refer to the [train.md](docs/train.md) for more details.
