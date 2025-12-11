@@ -16,7 +16,9 @@ Processed 3DPW annotations will be saved to the `eval/global_human/annots/` dire
 We follow [GVHMR](https://github.com/zju3dv/GVHMR) to prepare **EMDB** dataset.
 
 We follow [GVHMR](https://github.com/zju3dv/GVHMR) to prepare **RICH** dataset,
-please download SMPL annotations `hmr4d_support/rich_test_labels.pt` and camera ground-truth `resource/cam2params.pt` from [GoogleDrive](https://drive.google.com/file/d/17fbG1IsN6DfF_KwYWR2FbNZFKvs9waVb/view?usp=drive_link) into the `eval/global_human/annots/RICH/` directory.
+please download the following files and place them into the `eval/global_human/annots/RICH/` directory:
+- SMPL Annotations: `hmr4d_support/rich_test_labels.pt` (via [GoogleDrive](https://drive.google.com/file/d/17fbG1IsN6DfF_KwYWR2FbNZFKvs9waVb/view?usp=drive_link))
+- Camera Ground-Truth: `resource/cam2params.pt` (via [Github](https://github.com/zju3dv/GVHMR/blob/088caff492aa38c2d82cea363b78a3c65a83118f/hmr4d/dataset/rich/resource/cam2params.pt))
 
 We also evaluate generic 3D reconstruction (camera Pose and video depth estimation), please follow [MonST3R](https://github.com/Junyi42/monst3r/blob/main/data/evaluation_script.md) and [Spann3R](https://github.com/HengyiWang/spann3r/blob/main/docs/data_preprocess.md) to download, and follow [TTT3R](https://github.com/Inception3D/TTT3R/blob/main/eval/eval.md) to prepare **TUM-dynamics** and **Bonn** datasets.
 
