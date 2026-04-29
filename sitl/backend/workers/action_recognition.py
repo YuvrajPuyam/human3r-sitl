@@ -181,26 +181,52 @@ def _torso_lean(j17_t, body_h):
 
 # ── Per-frame pose classification (sitting / reaching / bending) ──────────────
 
-def _pose_label(j17_t):
+def _knee_flexion(pose_53):
+    """
+    Max knee flexion angle from SMPL-X rotation vectors (radians).
+    pose_53: (53, 3) array — pose[4]=left_knee, pose[5]=right_knee.
+    Returns float, or None if pose unavailable.
+    Sitting: ~1.0–1.6 rad. Walking: ~0.1–0.4 rad. Threshold: 0.65 rad.
+    """
+    if pose_53 is None:
+        return None
+    l = float(np.linalg.norm(pose_53[4]))
+    r = float(np.linalg.norm(pose_53[5]))
+    return max(l, r)
+
+
+def _pose_label(j17_t, pose_53=None):
     """
     Returns 'sitting', 'reaching', or 'bending' if the pose is clearly one of
     those, else None (locomotion label determined separately from sequence).
-    All geometry is relative to body scale — fully fps-agnostic.
+
+    Sitting detection uses two signals in priority order:
+      1. Knee flexion angle from rotation vectors (pose_53) — most stable,
+         unaffected by joint-position reconstruction instability.
+         Threshold: max(l_knee, r_knee) > 0.65 rad (≈37°).
+         Walking: 0.1–0.4 rad. Sitting: 1.0–1.6 rad. Gap is large.
+      2. Knee-drop ratio from joint positions — fallback when pose unavailable.
+         Threshold raised to 0.40 (was 0.18) to tolerate reconstruction noise
+         where knees aren't fully folded in the SMPL-X estimate.
     """
     body_h = _body_height(j17_t)
 
-    # Sitting: knees are at or above pelvis height (knee_drop ≈ 0)
-    # Standing: knee_drop > 0.30 of body height
-    kd = _knee_drop_ratio(j17_t, body_h)
-    if kd < 0.18:
+    # Sitting — primary: rotation-vector knee flexion
+    kf = _knee_flexion(pose_53)
+    if kf is not None and kf > 0.65:
         return 'sitting'
 
-    # Reaching: either wrist clearly above shoulder
+    # Sitting — fallback: joint-position knee-drop ratio
+    kd = _knee_drop_ratio(j17_t, body_h)
+    if kd < 0.40:
+        return 'sitting'
+
+    # Reaching: wrist clearly above shoulder
     wa = _wrist_above_shoulder(j17_t, body_h)
     if wa > 0.20:
         return 'reaching'
 
-    # Bending: head vertical clearance from pelvis is less than 40% body height
+    # Bending: head vertical clearance from pelvis < 35% body height
     tl = _torso_lean(j17_t, body_h)
     if tl < 0.35:
         return 'bending'
@@ -242,7 +268,7 @@ def _locomotion_label(j17_t, speed, knee_lift):
 
 # ── MotionBERT feature-space classification ───────────────────────────────────
 
-def _classify_with_motionbert(j_seq_T17_norm, speed_seq, backbone):
+def _classify_with_motionbert(j_seq_T17_norm, speed_seq, backbone, pose_seq=None):
     """
     Extract backbone features (B=1, F, 17, 512) then classify per-frame
     using improved heuristics applied in the normalised H36M joint space.
@@ -284,7 +310,8 @@ def _classify_with_motionbert(j_seq_T17_norm, speed_seq, backbone):
         j17 = j_seq_T17_norm[t]   # already normalised
 
         # Pose-based first
-        pose = _pose_label(j17)
+        p53 = np.array(pose_seq[t]) if pose_seq and t < len(pose_seq) else None
+        pose = _pose_label(j17, p53)
         if pose is not None:
             labels.append(pose)
             continue
@@ -305,14 +332,16 @@ def _classify_with_motionbert(j_seq_T17_norm, speed_seq, backbone):
 
 # ── Heuristic fallback (no MotionBERT) ───────────────────────────────────────
 
-def _classify_heuristic(j_seq_T17, speed_seq):
+def _classify_heuristic(j_seq_T17, speed_seq, pose_seq=None):
     """
     Improved biomechanical heuristics using the H36M 17-joint sequence.
     Knee-lift ratio is the primary locomotion discriminator (fps-agnostic).
+    Pose rotation vectors (pose_seq) used for robust sitting detection.
     """
     labels = []
     for t, j17 in enumerate(j_seq_T17):
-        pose = _pose_label(j17)
+        p53 = np.array(pose_seq[t]) if pose_seq and t < len(pose_seq) else None
+        pose = _pose_label(j17, p53)
         if pose is not None:
             labels.append(pose)
             continue
@@ -338,7 +367,7 @@ def _smooth(seq, window=15):
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def classify_person_sequence(joints_seq, speed_seq):
+def classify_person_sequence(joints_seq, speed_seq, pose_seq=None):
     """
     Classify actions for a single person across all frames.
 
@@ -347,6 +376,9 @@ def classify_person_sequence(joints_seq, speed_seq):
                     Frames where the person is absent should be omitted.
         speed_seq:  list of per-frame pelvis speeds (m/processed_frame),
                     same length as joints_seq.
+        pose_seq:   list of (53, 3) SMPL-X rotation-vector arrays (optional).
+                    When provided, used for robust sitting detection via
+                    knee flexion angle (more stable than joint positions).
 
     Returns:
         list of action strings (one per frame), smoothed.
@@ -359,7 +391,6 @@ def classify_person_sequence(joints_seq, speed_seq):
     # Build (T, 17, 3) in H36M format from SMPL-X body joints
     arr = np.array(joints_seq, dtype=np.float64)    # (T, J_in, 3)
     if arr.shape[1] < max(SMPLX_TO_H36M) + 1:
-        # Fewer joints than expected — fall back to pelvis/head only heuristic
         log.debug('Not enough joints (%d) for H36M remap; using legacy heuristic', arr.shape[1])
         return _smooth(_legacy_classify(joints_seq, speed_seq))
 
@@ -368,9 +399,9 @@ def classify_person_sequence(joints_seq, speed_seq):
 
     backbone = _try_load_motionbert()
     if backbone is not None:
-        raw = _classify_with_motionbert(j_norm, speed_seq, backbone)
+        raw = _classify_with_motionbert(j_norm, speed_seq, backbone, pose_seq)
     else:
-        raw = _classify_heuristic(j_h36m, speed_seq)   # raw joints, not normalised
+        raw = _classify_heuristic(j_h36m, speed_seq, pose_seq)
 
     return _smooth(raw, window=WINDOW)
 

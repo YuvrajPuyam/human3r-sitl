@@ -327,8 +327,8 @@ async def compute_spatial_analytics(job_id: str):
     # Exceeding this is a tracking blip (person disappeared and reappeared far away).
     _MAX_SPEED = 0.35
 
-    # Maps person_id → list of (ef_idx, human_idx, joints_127, speed)
-    person_seq_data: dict[int, list[tuple[int, int, list, float]]] = {}
+    # Maps person_id → list of (ef_idx, human_idx, joints_127, speed, pose_53)
+    person_seq_data: dict[int, list[tuple[int, int, list, float, list]]] = {}
     enriched_frames = []
 
     for frame in frames:
@@ -392,9 +392,9 @@ async def compute_spatial_analytics(job_id: str):
             vox = tuple((positions[i] / VOXEL).astype(int))
             occupied_voxels.add(vox)
 
-            # Collect joint sequence for batch action classification after the loop
+            # Collect joint + pose sequence for batch action classification after the loop
             person_seq_data.setdefault(h_id, []).append(
-                (ef_idx, i, humans[i].get("joints", []), speed)
+                (ef_idx, i, humans[i].get("joints", []), speed, humans[i].get("pose", []))
             )
 
         # ── c) Pairwise interaction metrics (Hall proxemics + gaze + dynamics) ─
@@ -479,13 +479,14 @@ async def compute_spatial_analytics(job_id: str):
     for h_id, entries in person_seq_data.items():
         joints_seq = [e[2] for e in entries]
         speed_seq  = [e[3] for e in entries]
+        pose_seq   = [e[4] for e in entries]
         try:
-            smoothed = classify_person_sequence(joints_seq, speed_seq)
+            smoothed = classify_person_sequence(joints_seq, speed_seq, pose_seq)
         except Exception as exc:
             log.warning('Action classification failed for person %s: %s', h_id, exc)
             smoothed = ['stationary'] * len(entries)
 
-        for idx, (ef_idx, hi, _, _) in enumerate(entries):
+        for idx, (ef_idx, hi, _, _, _) in enumerate(entries):
             action = smoothed[idx] if idx < len(smoothed) else 'stationary'
             enriched_frames[ef_idx]["humans"][hi]["action"] = action
 
