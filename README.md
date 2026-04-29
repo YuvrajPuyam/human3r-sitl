@@ -1,117 +1,271 @@
-<h2 align="center">
-  <img src="https://github.com/user-attachments/assets/11fde037-40f6-4406-aa31-b35ae7f2d381" height="24" style="vertical-align: bottom; margin-right: 0px;" />
-  <a href="https://fanegg.github.io/Human3R">Human3R: Everyone Everywhere All at Once</a>
-</h2>
+# SITL — Semantic Interaction Topology Lab
 
-<h5 align="center">
+A spatial-interaction analytics dashboard built on [Human3R](https://arxiv.org/abs/2510.06219). Upload a monocular video and get a fully navigable 3D scene with SMPL-X body meshes, real-time interaction analytics, and a browser-based dashboard — no camera rig, depth sensor, or manual annotation required.
 
-[![arXiv](https://img.shields.io/badge/Arxiv-2510.06219-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2510.06219) 
-[![Home Page](https://img.shields.io/badge/Project-Website-C27185.svg)](https://fanegg.github.io/Human3R) 
-[![X](https://img.shields.io/badge/@Yue%20Chen-black?logo=X)](https://twitter.com/faneggchen)  [![Bluesky](https://img.shields.io/badge/@Yue%20Chen-white?logo=Bluesky)](https://bsky.app/profile/fanegg.bsky.social)
+---
 
+## Overview
 
-[Yue Chen](https://fanegg.github.io/),
-[Xingyu Chen](https://rover-xingyu.github.io/)*,
-[Yuxuan Xue](https://yuxuan-xue.com/),
-[Anpei Chen](https://apchenstu.github.io/),
-[Yuliang Xiu](https://xiuyuliang.cn/)†,
-[Gerard Pons-Moll](https://virtualhumans.mpi-inf.mpg.de/)
-</h5>
-
-<div align="center">
-TL;DR: Inference with One model, One stage; Training in One day using One GPU
-</div>
-<br>
-
-https://github.com/user-attachments/assets/47fc7ecf-5235-471c-84b9-ccfeca6d56ea
-
-## Getting Started
-
-### Installation
-
-1. Clone Human3R.
-```bash
-git clone https://github.com/fanegg/Human3R.git
-cd Human3R
+```
+Video  →  Human3R inference  →  Spatial analytics  →  Three.js dashboard
+           (3D scene + SMPL-X      (Hall proxemics,       (point cloud +
+            meshes + camera         gaze, contact,          overlays +
+            trajectory)             speed, heatmap)         playback)
 ```
 
-2. Create the environment.
+Human3R performs one-shot monocular reconstruction: SMPL-X body meshes for every person, a dense colored point cloud of the environment, and the full camera trajectory — in a single forward pass. SITL wraps this with a headless pipeline, enriches the output with interaction metrics grounded in proxemics theory, and serves everything through a local web UI.
+
+---
+
+## Features
+
+### 3D Viewer
+- Colored point cloud of the reconstructed scene (binary PLY)
+- SMPL-X surface meshes per person (10,475 vertices, anatomically-sized skeleton)
+- Gaze arrows from head joint, direction from shoulder cross product
+- Fading trajectory trails (last 30 frames) per tracked person
+- Proximity edges colored by Hall (1966) proxemics zone:
+  - **Red** — intimate (< 0.45 m)
+  - **Orange** — personal (0.45–1.2 m)
+  - **Yellow** — social (1.2–3.7 m)
+- White midpoint sphere on edges where mutual gaze is detected
+- Floor heatmap showing spatial activity density
+- Layer toggles: cloud · skeleton · mesh · gaze · trails · interactions · heatmap · grid
+- Camera presets: Persp · Front · Follow
+- Live point-size slider
+
+### Playback Engine
+- Play / pause (`Space`), frame step (`←` / `→`), loop toggle
+- Speed presets: 0.25× · 0.5× · 1× · 2× · 4× (keys `1`–`5`)
+- Live FPS counter, screenshot export (PNG)
+
+### Analytics Dashboard
+Eight metrics with hover tooltips and click-to-expand modal showing formula and research citation:
+
+| Metric | Definition |
+|--------|------------|
+| Social Engagement | % frames where any pair is within Hall's personal zone (≤ 1.2 m) |
+| Avg Inter-Person Distance | Mean 3D pairwise distance across all frames |
+| Scene Utilization | % of 0.5 m voxels occupied by at least one person |
+| Gaze Convergence Events | Frames where ≥ 2 gaze rays converge within 1 m |
+| Intimate Zone Violations | % frames where any pair is within intimate zone (< 0.45 m) |
+| Average Movement Speed | Mean pelvis speed in m/s at 30 fps |
+| Approach Events | Times any pair transitions from diverging → converging |
+| Peak Occupancy | Max simultaneous persons in any single frame |
+
+### Timelines
+- **Interaction timeline**: color-coded strip above scrubber, zones per frame — click to seek
+- **Action display**: compact per-person action badge chips (stationary / walking / running / sitting / reaching / bending); expandable to full per-person timeline strips
+
+### Upload & Job Management
+- Drag-and-drop video upload with subsample presets (`1×`–`8×`)
+- Job history in `localStorage` (last 10 jobs, one-click reload)
+- URL hash (`#job_id`) auto-loads on page refresh
+- Delete job button (removes outputs from disk)
+- **Dev mode**: load any previously computed job in ~1 second — no GPU usage
+
+---
+
+## Stack
+
+| Layer | Technology |
+|-------|-----------|
+| 3D reconstruction | Human3R (DUSt3R + Multi-HMR, ViT-L @ 896px) |
+| Body model | SMPL-X (10,475 vertices, 45 joints) |
+| Backend | FastAPI + uvicorn + SSE |
+| Analytics | NumPy + SciPy (KDTree, gaussian filter) |
+| Frontend | React 18 UMD + Three.js r134 + Babel standalone |
+| Build | None — pure CDN, no webpack or npm |
+
+---
+
+## Requirements
+
+- Linux with CUDA 12.4
+- Conda
+- ~12 GB VRAM (ViT-L); ViT-S/B checkpoints available for lower VRAM
+
+---
+
+## Installation
+
 ```bash
-conda create -n human3r python=3.11 cmake
-conda activate human3r
-conda install pytorch torchvision pytorch-cuda=12.4 -c pytorch -c nvidia  # use the correct version of cuda for your system
+git clone https://github.com/YuvrajPuyam/human3r-sitl.git
+cd human3r-sitl
+
+conda create -n human3r128 python=3.11 cmake
+conda activate human3r128
+
+conda install pytorch torchvision pytorch-cuda=12.4 -c pytorch -c nvidia
 pip install -r requirements.txt
-# issues with pytorch dataloader, see https://github.com/pytorch/pytorch/issues/99625
 conda install 'llvm-openmp<16'
-# for training logging
-conda install -y gcc_linux-64 gxx_linux-64
+pip install fastapi uvicorn sse-starlette scipy
 pip install git+https://github.com/nerfstudio-project/gsplat.git
-# for evaluation
-pip install evo
-pip install open3d
-```
+pip install evo open3d
 
-3. Compile the cuda kernels for RoPE (as in CroCo v2).
-```bash
+# Compile CUDA RoPE kernels
 cd src/croco/models/curope/
 python setup.py build_ext --inplace
 cd ../../../../
-```
 
-### Download
-Run the following commands to download all models and checkpoints into the `src/` directory. The first command will prompt you to register and log in to access each version of SMPL.
-```Bash
-# SMPLX family models
+# Download SMPL-X body model
 bash scripts/fetch_smplx.sh
 
-# Human3R checkpoints
+# Download Human3R checkpoint
 huggingface-cli download faneggg/human3r human3r_896L.pth --local-dir ./src
 ```
 
-### Inference Demo
+### Checkpoints
 
-To run the inference demo, you can use the following command:
+| Model | Resolution | Backbone | Speed |
+|-------|-----------|----------|-------|
+| `human3r_672S.pth` | 672 | ViT-S | ~15 FPS |
+| `human3r_672B.pth` | 672 | ViT-B | ~11 FPS |
+| `human3r_672L.pth` | 672 | ViT-L | ~7 FPS |
+| `human3r_896L.pth` | 896 | ViT-L | ~5 FPS — **default** |
+
+---
+
+## Running
+
+### SITL Dashboard
+
 ```bash
-# input can be a folder or a video
-# the following script will run inference with Human3R and visualize the output with viser on port 8080
-CUDA_VISIBLE_DEVICES=0 python demo.py --model_path MODEL_PATH --size 512 \
-    --seq_path SEQ_PATH --output_dir OUT_DIR --subsample 1 --use_ttt3r \
-    --vis_threshold 2 --downsample_factor 1 --reset_interval 100
-
-# Example:
-# To save the results, append `--save --output_dir tmp` to the command.
-CUDA_VISIBLE_DEVICES=0 python demo.py --model_path src/human3r_896L.pth \
-    --size 512 --seq_path examples/GoodMornin1.mp4 \
-    --subsample 1 --use_ttt3r --vis_threshold 2 \
-    --downsample_factor 1 --reset_interval 100
-
+conda activate human3r128
+cd sitl
+uvicorn backend.main:app --reload --port 8000
 ```
 
-### Evaluation
-Please refer to the [eval.md](docs/eval.md) for more details.
+Open **http://localhost:8000/app**, drop a video, choose subsample rate, and let the pipeline run.
 
-### Model Cards
-Please refer to the [inference.md](docs/inference.md) for using different backbones.
+**Dev mode** — skip inference entirely: enter any previously computed job ID in the sidebar and press Enter. Viewer opens in ~1 second.
 
-### Training
-Please refer to the [train.md](docs/train.md) for more details.
+### Headless inference only
+
+```bash
+# Run from project root
+CUDA_VISIBLE_DEVICES=0 python engine.py \
+    --model_path src/human3r_896L.pth \
+    --seq_path examples/your_video.mp4 \
+    --output_dir sitl/outputs/my_job \
+    --subsample 3 --size 512
+```
+
+Outputs: `dashboard_data.json` + `scene.ply` in `--output_dir`.
+
+---
+
+## API
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `POST` | `/upload` | Save video, returns `{job_id}` |
+| `POST` | `/run/{job_id}?subsample=N` | Start pipeline |
+| `GET` | `/status/{job_id}` | SSE stream of stage/progress/logs |
+| `GET` | `/results/{job_id}` | URLs to `enriched_data.json` + `scene.ply` |
+| `GET` | `/dev/load/{job_id}` | Register existing outputs as completed |
+| `DELETE` | `/jobs/{job_id}` | Remove outputs + uploaded video |
+| `GET` | `/app` | Serve frontend |
+
+---
+
+## Output Files
+
+### `dashboard_data.json`
+Per-frame SMPL-X meshes, joints, camera trajectory. Written by `engine.py`.
+
+```json
+{
+  "metadata": { "total_frames": 229, "smpl_faces": [[i0,i1,i2], ...] },
+  "camera_trajectory": [{ "R": [[3×3]], "t": [x,y,z] }],
+  "frames": [{
+    "frame_id": 0,
+    "humans": [{
+      "id": 0,
+      "world_pos": [x,y,z],
+      "head_world": [x,y,z],
+      "pose": [[53×3]],
+      "shape": [10],
+      "verts": [[x,y,z] × 10475],
+      "joints": [[x,y,z] × 45]
+    }]
+  }]
+}
+```
+
+### `enriched_data.json`
+`dashboard_data` + analytics, `verts`/`joints` stripped (kept in `dashboard_data.json` to stay under 5 MB). Written by `analytics.py`.
+
+```json
+{
+  "metadata": { "social_engagement_pct": 63.2, ... },
+  "frames": [{
+    "humans": [{ "gaze_vec": [x,y,z], "contact_score": 0.85, "speed": 0.003 }],
+    "interactions": [{
+      "source": 0, "target": 1, "distance": 1.24,
+      "zone": "personal", "mutual_gaze": false, "approach_state": "approaching"
+    }]
+  }],
+  "summary": { ... }
+}
+```
+
+---
+
+## Coordinate System
+
+Human3R outputs in OpenCV world coordinates (Y-down). SITL Y-flips for Three.js:
+
+```javascript
+const fy = ([x, y, z]) => new THREE.Vector3(x, -y, z);  // joints, gaze vecs
+points.scale.y = -1;                                       // PLY cloud
+```
+
+- SMPL-X vertices (`world_pos`, `head_world`) — Y-up
+- SMPL-X joints — Y-down
+- PLY point cloud — Y-down
+
+---
+
+## Repository Layout
+
+```
+human3r-sitl/
+├── engine.py              ← Headless SITL runner
+├── demo.py                ← Original Human3R interactive demo (unmodified)
+├── src/                   ← Human3R model code (dust3r, croco, mhmr)
+├── scripts/               ← Data download helpers
+└── sitl/
+    ├── backend/
+    │   ├── main.py        ← FastAPI routes
+    │   ├── pipeline.py    ← Stage orchestrator
+    │   ├── inference.py   ← Subprocess wrapper for engine.py
+    │   └── workers/
+    │       └── analytics.py  ← Proxemics · gaze · contact · heatmap
+    ├── frontend/
+    │   ├── index.html     ← CDN loader (Three.js r134 + React 18 + Babel)
+    │   ├── Viewer.jsx     ← Three.js scene + dashboard
+    │   └── App.jsx        ← Upload UI + pipeline state machine
+    └── outputs/           ← Runtime job outputs (gitignored)
+```
+
+---
 
 ## Acknowledgements
-Our code is based on the following awesome repositories:
 
-- [CUT3R](https://github.com/CUT3R/CUT3R), [TTT3R](https://github.com/Inception3D/TTT3R), [Multi-HMR](https://github.com/naver/multi-hmr), [PromptHMR](https://github.com/yufu-wang/PromptHMR), [GVHMR](https://github.com/zju3dv/GVHMR), [MonST3R](https://github.com/Junyi42/monst3r.git), [Easi3R](https://github.com/Inception3D/Easi3R), [DUSt3R](https://github.com/naver/dust3r), [Viser](https://github.com/nerfstudio-project/viser), [BEDLAM](https://github.com/pixelite1201/BEDLAM)
+Built on top of:
+- **Human3R** — *Generalizable 3D Human Reconstruction in the Wild* (ICLR 2026, [arXiv:2510.06219](https://arxiv.org/abs/2510.06219))
+- **DUSt3R** — Dense Unconstrained Stereo 3D Reconstruction
+- **Multi-HMR** — Multi-person Human Mesh Recovery
+- **SMPL-X** — Expressive body model (Pavlakos et al., 2019)
 
-We thank the authors for releasing their code!
+Interaction metrics grounded in:
+- Hall (1966) — proxemics zones
+- Kendon (1967), Argyle & Cook (1976) — mutual gaze and social attention
+- Goffman (1971) — approach–avoidance dynamics
 
-## Citation
+---
 
-If you find our work useful, please cite:
+## License
 
-```bibtex
-@article{chen2025human3r,
-    title={Human3R: Everyone Everywhere All at Once},
-    author={Chen, Yue and Chen, Xingyu and Xue, Yuxuan and Chen, Anpei and Xiu, Yuliang and Gerard, Pons-Moll},
-    journal={arXiv preprint arXiv:2510.06219},
-    year={2025}
-    }
-```
+SITL dashboard code (`sitl/`, `engine.py`) — MIT. Human3R model code in `src/` is subject to the original [Human3R license](https://github.com/fanegg/Human3R).
