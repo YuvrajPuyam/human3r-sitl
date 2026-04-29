@@ -1,4 +1,4 @@
-// App.jsx — SITL application shell
+// App.jsx — BodyPlot application shell
 // Globals: React, ReactDOM, window.Viewer, window.StatCard
 
 const { useState, useCallback, useRef, useEffect } = React;
@@ -11,17 +11,31 @@ const PIPELINE_STAGES = [
   { id: 3, label: 'Complete',           desc: 'Viewer ready' },
 ];
 
+// ── Design tokens ──────────────────────────────────────────────────────────────
 const C = {
-  sidebar:     '#111114',
-  border:      '#1f2937',
-  card:        '#1a1a1a',
-  textPrimary: '#e2e8f0',
-  textMuted:   '#475569',
-  textFaint:   '#334155',
-  blue:        '#3b82f6',
-  green:       '#22c55e',
-  red:         '#ef4444',
-  yellow:      '#f59e0b',
+  bg:          '#09090b',
+  sidebar:     '#0d0d0f',
+  surface:     '#111116',
+  border:      '#27272a',
+  borderWarm:  '#44201a',
+
+  textPrimary: '#fafaf9',
+  textSecond:  '#a8a29e',
+  textMuted:   '#78716c',
+  textFaint:   '#44403c',
+
+  amber:       '#d97706',
+  amberBright: '#f59e0b',
+  amberDim:    '#451a03',
+  amberGlow:   'rgba(217,119,6,0.12)',
+
+  red:         '#dc2626',
+  redDim:      '#450a0a',
+
+  green:       '#16a34a',
+  greenDim:    '#052e16',
+
+  mono:        '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
 };
 
 const HISTORY_KEY = 'sitl_history';
@@ -54,17 +68,29 @@ function UploadScreen({ onFile, subsample, setSubsample, devJobId, setDevJobId, 
     <div style={{
       height: '100%', display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center', gap: 20,
-      background: '#0b0b0d',
+      background: C.bg,
     }}>
       {/* Logo mark */}
       <div style={{ textAlign: 'center', marginBottom: 4 }}>
-        <svg width="48" height="48" viewBox="0 0 64 64" fill="none" style={{ opacity: 0.5, display: 'block', margin: '0 auto 10px' }}>
-          <polygon points="32,4 60,52 4,52" stroke="#3b82f6" strokeWidth="2" fill="none" />
-          <polygon points="32,18 48,46 16,46" stroke="#3b82f6" strokeWidth="1" fill="none" opacity="0.5" />
+        {/* Crosshair / target reticle */}
+        <svg width="48" height="48" viewBox="0 0 64 64" fill="none"
+          style={{ display: 'block', margin: '0 auto 12px', opacity: 0.75 }}>
+          <circle cx="32" cy="32" r="22" stroke={C.amber} strokeWidth="1.5" fill="none" />
+          <circle cx="32" cy="32" r="10" stroke={C.amber} strokeWidth="1"   fill="none" opacity="0.6" />
+          <circle cx="32" cy="32" r="2.5" fill={C.amber} opacity="0.9" />
+          <line x1="32" y1="4"  x2="32" y2="18" stroke={C.amber} strokeWidth="1.5" strokeLinecap="round" />
+          <line x1="32" y1="46" x2="32" y2="60" stroke={C.amber} strokeWidth="1.5" strokeLinecap="round" />
+          <line x1="4"  y1="32" x2="18" y2="32" stroke={C.amber} strokeWidth="1.5" strokeLinecap="round" />
+          <line x1="46" y1="32" x2="60" y2="32" stroke={C.amber} strokeWidth="1.5" strokeLinecap="round" />
         </svg>
-        <div style={{ fontSize: 11, color: '#334155', letterSpacing: '0.14em', textTransform: 'uppercase' }}>
-          Semantic Interaction Topology Lab
-        </div>
+        <div style={{
+          fontSize: 18, fontWeight: 700, color: C.textPrimary,
+          letterSpacing: '0.18em', fontFamily: C.mono,
+        }}>BODYPLOT</div>
+        <div style={{
+          fontSize: 9, color: C.amber, marginTop: 4,
+          letterSpacing: '0.22em', textTransform: 'uppercase', fontFamily: C.mono,
+        }}>── CASE FILE ANALYSIS ──</div>
       </div>
 
       {/* Drop zone */}
@@ -75,29 +101,29 @@ function UploadScreen({ onFile, subsample, setSubsample, devJobId, setDevJobId, 
         onClick={() => inputRef.current?.click()}
         style={{
           width: 460, maxWidth: '88vw',
-          border: `2px dashed ${dragging ? C.blue : '#1e293b'}`,
-          borderRadius: 14, padding: '40px 24px',
+          border: `2px dashed ${dragging ? C.amber : C.border}`,
+          borderRadius: 10, padding: '38px 24px',
           textAlign: 'center', cursor: 'pointer',
-          background: dragging ? 'rgba(59,130,246,0.06)' : 'rgba(255,255,255,0.015)',
+          background: dragging ? C.amberGlow : 'rgba(255,255,255,0.012)',
           transition: 'border-color .18s, background .18s',
         }}
       >
-        <div style={{ fontSize: 44, marginBottom: 14, userSelect: 'none', opacity: dragging ? 1 : 0.7 }}>
-          🎥
+        <div style={{ fontSize: 36, marginBottom: 12, userSelect: 'none', opacity: dragging ? 1 : 0.6 }}>
+          ◎
         </div>
-        <div style={{ fontSize: 17, fontWeight: 600, color: '#cbd5e1', marginBottom: 6 }}>
-          Drop a video to begin
+        <div style={{ fontSize: 16, fontWeight: 600, color: C.textPrimary, marginBottom: 5 }}>
+          Submit footage for analysis
         </div>
-        <div style={{ fontSize: 12, color: '#334155', marginBottom: 20 }}>
+        <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 20, fontFamily: C.mono }}>
           mp4 · mov · avi · mkv
         </div>
         <div style={{
           display: 'inline-block', padding: '7px 20px',
-          background: '#172554', border: '1px solid #3b82f6',
-          borderRadius: 6, color: '#60a5fa', fontSize: 12, fontWeight: 500,
-          transition: 'background .15s',
+          background: C.amberDim, border: `1px solid ${C.amber}`,
+          borderRadius: 5, color: C.amberBright, fontSize: 11,
+          fontWeight: 600, fontFamily: C.mono, letterSpacing: '0.06em',
         }}>
-          Browse files
+          OPEN FILE
         </div>
         <input ref={inputRef} type="file" accept="video/*" style={{ display: 'none' }}
           onChange={e => { const f = e.target.files[0]; if (f) onFile(f); }}
@@ -106,17 +132,17 @@ function UploadScreen({ onFile, subsample, setSubsample, devJobId, setDevJobId, 
 
       {/* Subsample presets */}
       <div style={{ width: 460, maxWidth: '88vw' }}>
-        <div style={{ fontSize: 10, color: '#334155', marginBottom: 7,
-          textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+        <div style={{ ...LABEL, marginBottom: 7 }}>
           Subsample — every {subsample} frame{subsample > 1 ? 's' : ''}
         </div>
         <div style={{ display: 'flex', gap: 5 }}>
           {[1, 2, 3, 4, 8].map(n => (
             <button key={n} onClick={() => setSubsample(n)} style={{
-              flex: 1, padding: '7px 0', fontSize: 12, cursor: 'pointer', borderRadius: 6,
-              background: subsample === n ? '#172554' : '#0f1117',
-              border: `1px solid ${subsample === n ? C.blue : '#1e293b'}`,
-              color: subsample === n ? '#60a5fa' : '#475569',
+              flex: 1, padding: '7px 0', fontSize: 11, cursor: 'pointer', borderRadius: 5,
+              fontFamily: C.mono,
+              background: subsample === n ? C.amberDim : C.surface,
+              border: `1px solid ${subsample === n ? C.amber : C.border}`,
+              color: subsample === n ? C.amberBright : C.textMuted,
               transition: 'all .12s',
             }}>{n}×</button>
           ))}
@@ -129,32 +155,32 @@ function UploadScreen({ onFile, subsample, setSubsample, devJobId, setDevJobId, 
           type="text" value={devJobId}
           onChange={e => setDevJobId(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && onDevLoad()}
-          placeholder="Load existing job id…"
+          placeholder="Load existing case id…"
           style={{
             flex: 1, padding: '8px 10px', fontSize: 11,
-            background: '#0f1117', border: '1px solid #1e293b',
-            borderRadius: 6, color: '#e2e8f0', outline: 'none',
-            fontFamily: 'monospace',
+            background: C.surface, border: `1px solid ${C.border}`,
+            borderRadius: 5, color: C.textPrimary, outline: 'none',
+            fontFamily: C.mono,
           }}
         />
         <button onClick={onDevLoad} style={{
           padding: '8px 14px', fontSize: 11, fontWeight: 600,
-          background: '#172554', border: `1px solid ${C.blue}`,
-          borderRadius: 6, color: C.blue, cursor: 'pointer', whiteSpace: 'nowrap',
-        }}>Load ↵</button>
+          background: C.amberDim, border: `1px solid ${C.amber}`,
+          borderRadius: 5, color: C.amber, cursor: 'pointer',
+          whiteSpace: 'nowrap', fontFamily: C.mono, letterSpacing: '0.04em',
+        }}>LOAD ↵</button>
       </div>
 
-      {/* Recent jobs */}
+      {/* Recent cases */}
       {history.length > 0 && (
         <div style={{ width: 460, maxWidth: '88vw' }}>
-          <div style={{ fontSize: 10, color: '#334155', marginBottom: 6,
-            textTransform: 'uppercase', letterSpacing: '0.08em' }}>Recent</div>
+          <div style={{ ...LABEL, marginBottom: 6 }}>Recent Cases</div>
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
             {history.slice(0, 5).map(e => (
               <button key={e.id} onClick={() => onHistoryLoad(e.id)} style={{
-                padding: '4px 10px', fontSize: 10, cursor: 'pointer', borderRadius: 5,
-                background: '#0f1117', border: '1px solid #1e293b',
-                color: '#60a5fa', fontFamily: 'monospace',
+                padding: '4px 10px', fontSize: 10, cursor: 'pointer', borderRadius: 4,
+                background: C.surface, border: `1px solid ${C.border}`,
+                color: C.amber, fontFamily: C.mono,
                 transition: 'border-color .12s',
               }}>{e.id.slice(0, 8)}</button>
             ))}
@@ -183,14 +209,14 @@ function ProcessingScreen({ stage, progress, logs, phase }) {
     <div style={{
       height: '100%', display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
-      background: '#0b0b0d', gap: 0,
+      background: C.bg, gap: 0,
     }}>
       {/* Progress ring */}
       <div style={{ position: 'relative', width: 88, height: 88, marginBottom: 22 }}>
         <svg width="88" height="88" viewBox="0 0 80 80"
           style={{ transform: 'rotate(-90deg)', display: 'block' }}>
-          <circle cx="40" cy="40" r={R} fill="none" stroke="#1e293b" strokeWidth="6" />
-          <circle cx="40" cy="40" r={R} fill="none" stroke="#3b82f6" strokeWidth="6"
+          <circle cx="40" cy="40" r={R} fill="none" stroke={C.border} strokeWidth="5" />
+          <circle cx="40" cy="40" r={R} fill="none" stroke={C.amber} strokeWidth="5"
             strokeDasharray={CIRC}
             strokeDashoffset={CIRC * (1 - pct)}
             strokeLinecap="round"
@@ -199,22 +225,22 @@ function ProcessingScreen({ stage, progress, logs, phase }) {
         </svg>
         <div style={{
           position: 'absolute', inset: 0, display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
         }}>
-          <span style={{ fontSize: 18, fontWeight: 700, color: '#3b82f6', lineHeight: 1 }}>
-            {stage}
-          </span>
-          <span style={{ fontSize: 9, color: '#334155', letterSpacing: '0.04em' }}>
+          <span style={{
+            fontSize: 18, fontWeight: 700, color: C.amber,
+            lineHeight: 1, fontFamily: C.mono,
+          }}>{stage}</span>
+          <span style={{ fontSize: 9, color: C.textFaint, fontFamily: C.mono }}>
             /{STAGES.length}
           </span>
         </div>
       </div>
 
-      <div style={{ fontSize: 15, fontWeight: 600, color: '#e2e8f0', marginBottom: 5 }}>
+      <div style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 4, fontFamily: C.mono }}>
         {cur.label}
       </div>
-      <div style={{ fontSize: 12, color: '#475569', marginBottom: 28 }}>{cur.desc}</div>
+      <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 28 }}>{cur.desc}</div>
 
       {/* Stage pills */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 24 }}>
@@ -224,10 +250,11 @@ function ProcessingScreen({ stage, progress, logs, phase }) {
           return (
             <div key={s.id} style={{
               display: 'flex', alignItems: 'center', gap: 5,
-              padding: '4px 12px', borderRadius: 20, fontSize: 11,
-              background:  done ? '#052e16' : active ? '#172554' : '#0f1117',
-              border:      `1px solid ${done ? '#22c55e' : active ? '#3b82f6' : '#1e293b'}`,
-              color:       done ? '#22c55e' : active ? '#60a5fa' : '#334155',
+              padding: '4px 12px', borderRadius: 20, fontSize: 10,
+              fontFamily: C.mono,
+              background:  done ? C.greenDim : active ? C.amberDim : C.surface,
+              border:      `1px solid ${done ? C.green : active ? C.amber : C.border}`,
+              color:       done ? C.green : active ? C.amberBright : C.textFaint,
               transition:  'all .3s',
             }}>
               <span>{done ? '✓' : active ? '●' : '○'}</span>
@@ -240,7 +267,7 @@ function ProcessingScreen({ stage, progress, logs, phase }) {
       {/* Latest log line */}
       {lastLog && (
         <div style={{
-          fontFamily: 'monospace', fontSize: 10, color: '#334155',
+          fontFamily: C.mono, fontSize: 10, color: C.textFaint,
           maxWidth: 440, overflow: 'hidden', textOverflow: 'ellipsis',
           whiteSpace: 'nowrap', padding: '0 24px',
         }}>{lastLog}</div>
@@ -255,18 +282,18 @@ function StageRow({ stage, current, status }) {
   const done   = status === 'completed' || current > stage.id;
   const active = current === stage.id && status === 'processing';
   const failed = current === stage.id && status === 'failed';
-  let bg = C.card, border = C.border, textColor = C.textFaint;
-  if (done)   { bg = '#052e16'; border = C.green;  textColor = C.textPrimary; }
-  if (active) { bg = '#172554'; border = C.blue;   textColor = C.textPrimary; }
-  if (failed) { bg = '#450a0a'; border = C.red;    textColor = C.textPrimary; }
+  let bg = C.surface, border = C.border, textColor = C.textFaint;
+  if (done)   { bg = C.greenDim; border = C.green;  textColor = C.textPrimary; }
+  if (active) { bg = C.amberDim; border = C.amber;  textColor = C.textPrimary; }
+  if (failed) { bg = C.redDim;   border = C.red;    textColor = C.textPrimary; }
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '6px 0' }}>
       <div style={{
         width: 22, height: 22, flexShrink: 0, borderRadius: '50%',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 10, fontWeight: 700, marginTop: 1,
+        fontSize: 10, fontWeight: 700, marginTop: 1, fontFamily: C.mono,
         background: bg, border: `1.5px solid ${border}`, color: textColor,
-        boxShadow: active ? `0 0 10px ${C.blue}44` : 'none', transition: 'all .2s',
+        boxShadow: active ? `0 0 10px ${C.amber}44` : 'none', transition: 'all .2s',
       }}>
         {done ? '✓' : failed ? '✕' : stage.id}
       </div>
@@ -281,14 +308,17 @@ function StageRow({ stage, current, status }) {
 function ProgressBar({ value }) {
   return (
     <div style={{ marginBottom: 8 }}>
-      <div style={{ height: 3, background: '#1e293b', borderRadius: 2, overflow: 'hidden' }}>
+      <div style={{ height: 3, background: C.border, borderRadius: 2, overflow: 'hidden' }}>
         <div style={{
           width: `${value}%`, height: '100%',
-          background: `linear-gradient(90deg, ${C.blue}, #60a5fa)`,
+          background: `linear-gradient(90deg, ${C.amber}, ${C.amberBright})`,
           transition: 'width .4s ease', borderRadius: 2,
         }} />
       </div>
-      <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2, textAlign: 'right' }}>{value}%</div>
+      <div style={{
+        fontSize: 10, color: C.textMuted, marginTop: 2,
+        textAlign: 'right', fontFamily: C.mono,
+      }}>{value}%</div>
     </div>
   );
 }
@@ -298,7 +328,7 @@ function LogConsole({ logs }) {
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [logs.length]);
   return (
     <div style={{
-      fontFamily: "'SF Mono','Fira Code','Cascadia Code',monospace",
+      fontFamily: C.mono,
       fontSize: 10, lineHeight: 1.6, color: C.textMuted,
       overflowY: 'auto', padding: '8px 16px', flex: 1, minHeight: 0,
     }}>
@@ -318,14 +348,14 @@ function HistoryPanel({ history, onLoad, onRemove }) {
   if (!history.length) return null;
   return (
     <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}` }}>
-      <div style={{ ...LABEL, marginBottom: 6 }}>Recent Jobs</div>
+      <div style={{ ...LABEL, marginBottom: 6 }}>Case Archive</div>
       {history.slice(0, 8).map(e => (
         <div key={e.id} style={{
           display: 'flex', alignItems: 'center', gap: 5,
           padding: '4px 0', borderBottom: `1px solid ${C.border}22`,
         }}>
           <div onClick={() => onLoad(e.id)} style={{ flex: 1, cursor: 'pointer' }}>
-            <div style={{ fontFamily: 'monospace', fontSize: 10, color: '#60a5fa' }}>{e.id}</div>
+            <div style={{ fontFamily: C.mono, fontSize: 10, color: C.amber }}>{e.id}</div>
             {e.filename && (
               <div style={{
                 fontSize: 9, color: C.textMuted, marginTop: 1,
@@ -333,7 +363,7 @@ function HistoryPanel({ history, onLoad, onRemove }) {
               }}>{e.filename}</div>
             )}
           </div>
-          <span style={{ fontSize: 9, color: C.textFaint, whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 9, color: C.textFaint, whiteSpace: 'nowrap', fontFamily: C.mono }}>
             {e.ts ? new Date(e.ts).toLocaleDateString() : ''}
           </span>
           <button onClick={() => onRemove(e.id)} style={{
@@ -362,7 +392,7 @@ function App() {
 
   const isProcessing = phase === 'uploading' || phase === 'processing';
 
-  // ── Core job loader (shared by dev-load, history, hash auto-load) ──────────
+  // ── Core job loader ────────────────────────────────────────────────────────
   const loadJobById = useCallback(async (id) => {
     if (!id) return;
     const trimmed = id.trim();
@@ -379,7 +409,7 @@ function App() {
       setJobId(data.job_id);
       setStage(3);
       setProgress(100);
-      setLogs([`[dev] Loaded job ${data.job_id}`]);
+      setLogs([`[dev] Loaded case ${data.job_id}`]);
       window.location.hash = '#' + data.job_id;
       setHistory(saveHistory({ id: data.job_id, filename: data.job_id, ts: Date.now() }));
     } catch (err) {
@@ -405,7 +435,7 @@ function App() {
       if (!upRes.ok) throw new Error(`Upload failed: ${upRes.status}`);
       const { job_id } = await upRes.json();
       setJobId(job_id);
-      setLogs([`Uploaded: ${file.name}  (job ${job_id})`]);
+      setLogs([`Uploaded: ${file.name}  (case ${job_id})`]);
 
       const runRes = await fetch(`/run/${job_id}?subsample=${subsample}`, { method: 'POST' });
       if (!runRes.ok) throw new Error(`Pipeline start failed: ${runRes.status}`);
@@ -498,32 +528,38 @@ function App() {
       }}>
 
         {/* Header */}
-        <div style={{ padding: '16px 16px 12px', borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.textPrimary, letterSpacing: '0.06em' }}>
-            SITL
-          </div>
-          <div style={{ fontSize: 9, color: C.textMuted, marginTop: 2, letterSpacing: '0.08em' }}>
-            SEMANTIC INTERACTION TOPOLOGY LAB
-          </div>
+        <div style={{
+          padding: '14px 16px 12px',
+          borderBottom: `1px solid ${C.border}`,
+        }}>
+          <div style={{
+            fontSize: 14, fontWeight: 700, color: C.textPrimary,
+            letterSpacing: '0.16em', fontFamily: C.mono,
+          }}>BODYPLOT</div>
+          <div style={{
+            fontSize: 8, color: C.amber, marginTop: 3,
+            letterSpacing: '0.16em', fontFamily: C.mono,
+          }}>── CASE FILE ANALYSIS ──</div>
         </div>
 
-        {/* Upload (compact — primary upload is on main canvas) */}
+        {/* Upload (compact) */}
         {(phase === 'idle' || phase === 'completed' || phase === 'failed') && (
           <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}` }}>
-            <div style={{ ...LABEL, marginBottom: 8 }}>Video</div>
+            <div style={{ ...LABEL, marginBottom: 8 }}>Footage</div>
             <CompactDropZone onFile={startPipeline} disabled={isProcessing} />
 
             {(phase === 'completed' || phase === 'failed') && (
               <div style={{ display: 'flex', gap: 6, marginTop: 9 }}>
                 <button onClick={reset} style={{
                   flex: 1, padding: '7px 0',
-                  background: C.card, border: `1px solid ${C.border}`,
-                  color: '#94a3b8', borderRadius: 5, cursor: 'pointer', fontSize: 11,
-                }}>↺  New video</button>
+                  background: C.surface, border: `1px solid ${C.border}`,
+                  color: C.textSecond, borderRadius: 5, cursor: 'pointer',
+                  fontSize: 11, fontFamily: C.mono,
+                }}>↺  New case</button>
                 {phase === 'completed' && jobId && (
-                  <button onClick={deleteJob} title="Delete job outputs" style={{
+                  <button onClick={deleteJob} title="Delete case outputs" style={{
                     padding: '7px 9px', background: 'transparent',
-                    border: `1px solid #450a0a`, color: C.red,
+                    border: `1px solid ${C.redDim}`, color: C.red,
                     borderRadius: 5, cursor: 'pointer', fontSize: 11,
                   }}>🗑</button>
                 )}
@@ -539,9 +575,10 @@ function App() {
                   {[1, 2, 3, 4, 8].map(n => (
                     <button key={n} onClick={() => setSubsample(n)} style={{
                       flex: 1, padding: '3px 0', fontSize: 10, cursor: 'pointer', borderRadius: 4,
-                      background: subsample === n ? '#172554' : 'transparent',
-                      border: `1px solid ${subsample === n ? C.blue : C.border}`,
-                      color: subsample === n ? '#60a5fa' : C.textMuted,
+                      fontFamily: C.mono,
+                      background: subsample === n ? C.amberDim : 'transparent',
+                      border: `1px solid ${subsample === n ? C.amber : C.border}`,
+                      color: subsample === n ? C.amberBright : C.textMuted,
                     }}>{n}</button>
                   ))}
                 </div>
@@ -557,30 +594,30 @@ function App() {
         {/* Dev load (idle only) */}
         {phase === 'idle' && (
           <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}` }}>
-            <div style={{ ...LABEL, marginBottom: 5 }}>Load Existing Job</div>
+            <div style={{ ...LABEL, marginBottom: 5 }}>Load Existing Case</div>
             <div style={{ display: 'flex', gap: 5 }}>
               <input
                 type="text" value={devJobId}
                 onChange={e => setDevJobId(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && loadDevJob()}
-                placeholder="job id"
+                placeholder="case id"
                 style={{
                   flex: 1, padding: '5px 7px', fontSize: 10,
-                  background: '#0f1117', border: `1px solid ${C.border}`,
+                  background: C.surface, border: `1px solid ${C.border}`,
                   borderRadius: 4, color: C.textPrimary, outline: 'none',
-                  fontFamily: 'monospace',
+                  fontFamily: C.mono,
                 }}
               />
               <button onClick={loadDevJob} style={{
                 padding: '5px 9px', fontSize: 10, fontWeight: 600,
-                background: '#172554', border: `1px solid ${C.blue}`,
-                borderRadius: 4, color: C.blue, cursor: 'pointer',
+                background: C.amberDim, border: `1px solid ${C.amber}`,
+                borderRadius: 4, color: C.amber, cursor: 'pointer', fontFamily: C.mono,
               }}>Load</button>
             </div>
           </div>
         )}
 
-        {/* Job history (idle only) */}
+        {/* Case history */}
         {phase === 'idle' && (
           <HistoryPanel history={history} onLoad={loadJobById} onRemove={removeFromHistory} />
         )}
@@ -600,7 +637,7 @@ function App() {
         {error && (
           <div style={{
             padding: '9px 16px', borderBottom: `1px solid ${C.border}`,
-            fontSize: 11, color: C.red, lineHeight: 1.5,
+            fontSize: 11, color: C.red, lineHeight: 1.5, fontFamily: C.mono,
           }}>
             ✕  {error}
           </div>
@@ -609,7 +646,7 @@ function App() {
         {/* Logs */}
         {logs.length > 0 && (
           <>
-            <div style={{ padding: '8px 16px 0', ...LABEL }}>Logs</div>
+            <div style={{ padding: '8px 16px 0', ...LABEL }}>Case Log</div>
             <LogConsole logs={logs} />
           </>
         )}
@@ -636,16 +673,16 @@ function CompactDropZone({ onFile, disabled }) {
       onDragLeave={() => setDrag(false)}
       onDrop={handleDrop}
       style={{
-        border: `1.5px dashed ${drag ? C.blue : C.border}`,
+        border: `1.5px dashed ${drag ? C.amber : C.border}`,
         borderRadius: 6, padding: '14px 10px', textAlign: 'center',
         cursor: disabled ? 'not-allowed' : 'pointer',
-        background: drag ? '#172554' : 'transparent',
+        background: drag ? C.amberGlow : 'transparent',
         transition: 'border-color .15s, background .15s',
         userSelect: 'none',
       }}
     >
-      <div style={{ fontSize: 20, marginBottom: 4, opacity: disabled ? 0.3 : 0.7 }}>🎥</div>
-      <div style={{ fontSize: 10, color: disabled ? C.textFaint : '#94a3b8' }}>
+      <div style={{ fontSize: 18, marginBottom: 4, opacity: disabled ? 0.3 : 0.65 }}>◎</div>
+      <div style={{ fontSize: 10, color: disabled ? C.textFaint : C.textSecond }}>
         {disabled ? 'Processing…' : 'Drop or click to upload'}
       </div>
       <input ref={ref} type="file" accept="video/*" style={{ display: 'none' }}
@@ -656,8 +693,9 @@ function CompactDropZone({ onFile, disabled }) {
 }
 
 const LABEL = {
-  fontSize: 9, color: '#64748b',
-  textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8,
+  fontSize: 9, color: '#78716c',
+  textTransform: 'uppercase', letterSpacing: '0.10em',
+  fontFamily: '"JetBrains Mono", "Fira Code", monospace',
 };
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);

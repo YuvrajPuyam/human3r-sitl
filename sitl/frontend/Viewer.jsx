@@ -1,11 +1,30 @@
-// Viewer.jsx v12 — Three.js scene viewer with playback, layer toggles, analytics
+// Viewer.jsx v13 — BodyPlot crime-board aesthetic
 // Globals: THREE r134 (+ OrbitControls + PLYLoader), React 18
 
 const { useEffect, useRef, useState, useCallback } = React;
 
 // ── Coordinate helper (module-level — used by overlay effect AND animation loop)
-// Converts OpenCV Y-DOWN world coordinates → Three.js Y-UP
 const fy = ([x, y, z]) => new THREE.Vector3(x, -y, z);
+
+// ── Design tokens (mirrors App.jsx) ──────────────────────────────────────────
+const V = {
+  bg:          '#09090b',
+  surface:     '#111116',
+  surface2:    '#18181b',
+  border:      '#27272a',
+  borderWarm:  '#44201a',
+  textPrimary: '#fafaf9',
+  textSecond:  '#a8a29e',
+  textMuted:   '#78716c',
+  textFaint:   '#44403c',
+  amber:       '#d97706',
+  amberBright: '#f59e0b',
+  amberDim:    '#451a03',
+  amberGlow:   'rgba(217,119,6,0.10)',
+  red:         '#dc2626',
+  green:       '#16a34a',
+  mono:        '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
+};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -20,7 +39,7 @@ const PALETTE_HEX = [
 ];
 
 const ACTION_COLORS = {
-  stationary: '#64748b',
+  stationary: '#78716c',
   walking:    '#3b82f6',
   running:    '#22c55e',
   sitting:    '#a78bfa',
@@ -28,19 +47,19 @@ const ACTION_COLORS = {
   bending:    '#ef4444',
 };
 
-// Hall (1966) proxemics zone colours
+// Hall (1966) proxemics zone colours — already warm/red, fit the crime-board perfectly
 const ZONE_COLORS = {
-  intimate: 0xef4444,   // red   < 0.45 m
+  intimate: 0xdc2626,   // red   < 0.45 m
   personal: 0xf97316,   // orange 0.45–1.2 m
-  social:   0xfbbf24,   // yellow 1.2–3.7 m
-  public:   0x3b82f6,   // blue  > 3.7 m (not rendered as edge)
+  social:   0xd97706,   // amber  1.2–3.7 m
+  public:   0x44403c,   // stone  > 3.7 m (not rendered as edge)
 };
 
 const ZONE_HEX = {
-  intimate: '#ef4444',
+  intimate: '#dc2626',
   personal: '#f97316',
-  social:   '#fbbf24',
-  public:   '#3b82f6',
+  social:   '#d97706',
+  public:   '#44403c',
 };
 
 const SMPLX_BONES = [
@@ -69,7 +88,7 @@ const CAM_BTNS = [
   { id: 'follow', label: 'Follow' },
 ];
 
-// ── Metric definitions (for rich StatPill tooltips) ───────────────────────────
+// ── Metric definitions ────────────────────────────────────────────────────────
 
 const METRIC_DEFS = {
   social_engagement_pct: {
@@ -77,54 +96,54 @@ const METRIC_DEFS = {
     description: "Percentage of frames where at least one pair is within Hall's personal-distance zone (≤ 1.2 m), indicating active interpersonal interaction.",
     formula:     'frames_with_any_pair ≤ 1.2 m / total_frames × 100%',
     research:    'Hall (1966) proxemics — personal zone: 45–120 cm.',
-    accent:      '#22c55e',
+    accent:      '#16a34a',
   },
   avg_inter_human_distance: {
-    label:       'Avg Inter-Person Distance',
-    description: 'Mean 3D Euclidean distance between all detected people, averaged across all pairs and all frames.',
+    label:       'Avg Inter-Subject Distance',
+    description: 'Mean 3D Euclidean distance between all detected subjects, averaged across all pairs and all frames.',
     formula:     'mean(‖pos_i − pos_j‖₂)  ∀ pairs (i,j), ∀ frames',
     research:    'Spatial cohesion proxy (Cristani et al., 2011; Hall, 1966).',
-    accent:      '#3b82f6',
+    accent:      '#d97706',
   },
   scene_utilization_pct: {
     label:       'Scene Utilization',
-    description: 'Percentage of 0.5 m³ voxels inside the scene bounding box that were occupied by at least one person at any point in the video.',
+    description: 'Percentage of 0.5 m³ voxels inside the scene bounding box that were occupied by at least one subject at any point in the footage.',
     formula:     'occupied_0.5 m_voxels / total_scene_voxels × 100%',
     research:    'Measures spatial coverage and mobility range within the scene.',
     accent:      '#a78bfa',
   },
   gaze_convergence_events: {
     label:       'Gaze Convergence Events',
-    description: 'Number of frames where at least one pair of people have gaze rays whose closest-approach distance is < 1 m, suggesting mutual visual attention.',
+    description: 'Number of frames where at least one pair of subjects have gaze rays whose closest-approach distance is < 1 m, suggesting mutual visual attention.',
     formula:     'min‖closest_approach(ray_i, ray_j)‖ < 1.0 m, counted per frame',
     research:    'Mutual gaze: key indicator of social attention (Kendon, 1967; Argyle & Cook, 1976).',
     accent:      '#f59e0b',
   },
   personal_space_pct: {
     label:       'Intimate Zone Violations',
-    description: "Percentage of frames where any pair of people is within Hall's intimate-distance zone (< 0.45 m), indicating very close physical proximity or contact.",
+    description: "Percentage of frames where any pair of subjects is within Hall's intimate-distance zone (< 0.45 m), indicating very close physical proximity or contact.",
     formula:     'frames_with_any_pair < 0.45 m / total_frames × 100%',
     research:    'Hall (1966) intimate zone: 0–45 cm. Indicates physical contact or crowding.',
-    accent:      '#ef4444',
+    accent:      '#dc2626',
   },
   avg_speed_mpf: {
     label:       'Average Movement Speed',
-    description: 'Mean movement speed of all tracked people, computed from frame-to-frame pelvis displacement at 30 fps.',
+    description: 'Mean movement speed of all tracked subjects, computed from frame-to-frame pelvis displacement.',
     formula:     'mean(‖Δpelvis‖ per frame) × 30 fps  [m/s]',
     research:    'Pelvis velocity is a standard locomotion proxy in SMPL-X-based tracking.',
     accent:      '#06b6d4',
   },
   approach_events: {
     label:       'Approach Events',
-    description: 'Number of times any pair transitions into an approaching state (inter-person distance derivative changes from positive or zero to negative).',
+    description: 'Number of times any pair transitions into an approaching state (inter-subject distance derivative changes from positive or zero to negative).',
     formula:     'count of sign(Δdist) transitions: non-negative → negative, per pair',
     research:    'Approach–avoidance dynamics predict social engagement (Goffman, 1971).',
     accent:      '#f97316',
   },
   peak_occupancy: {
     label:       'Peak Occupancy',
-    description: 'Maximum number of people simultaneously detected and tracked in any single video frame.',
-    formula:     'max(|people_per_frame|) across all frames',
+    description: 'Maximum number of subjects simultaneously detected and tracked in any single video frame.',
+    formula:     'max(|subjects_per_frame|) across all frames',
     research:    'Relevant for crowding analysis and group dynamics (Stokols, 1972).',
     accent:      '#8b5cf6',
   },
@@ -135,71 +154,75 @@ const METRIC_DEFS = {
 function StatCard({ label, value, accent }) {
   return (
     <div style={{
-      background: 'rgba(13,13,13,0.88)', border: '1px solid #1f2937',
-      borderRadius: 8, padding: '10px 16px', backdropFilter: 'blur(6px)',
+      background: 'rgba(11,9,8,0.90)', border: `1px solid ${V.border}`,
+      borderRadius: 7, padding: '10px 16px', backdropFilter: 'blur(6px)',
       minWidth: 100,
     }}>
       <div style={{
-        fontSize: 20, fontWeight: 700, color: accent || '#3b82f6',
-        lineHeight: 1.15, fontVariantNumeric: 'tabular-nums',
+        fontSize: 20, fontWeight: 700, color: accent || V.amber,
+        lineHeight: 1.15, fontVariantNumeric: 'tabular-nums', fontFamily: V.mono,
       }}>{value}</div>
       <div style={{
-        fontSize: 10, color: '#475569', marginTop: 3,
-        textTransform: 'uppercase', letterSpacing: '0.08em',
+        fontSize: 9, color: V.textMuted, marginTop: 3,
+        textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: V.mono,
       }}>{label}</div>
     </div>
   );
 }
 window.StatCard = StatCard;
 
-// ── Metric info modal (fixed-position — avoids overflow clipping) ─────────────
+// ── Metric info modal ─────────────────────────────────────────────────────────
 
 function MetricModal({ def, value, onClose }) {
-  const accent = def.accent || '#3b82f6';
+  const accent = def.accent || V.amber;
   return (
     <div
       style={{
         position: 'fixed', inset: 0, zIndex: 2000,
-        background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)',
+        background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
       onClick={onClose}
     >
       <div
         style={{
-          background: '#0a0a14', border: `1px solid ${accent}55`,
-          borderRadius: 12, padding: '22px 26px',
+          background: '#0d0b09', border: `1px solid ${accent}55`,
+          borderRadius: 10, padding: '22px 26px',
           minWidth: 320, maxWidth: 440,
-          boxShadow: `0 8px 40px rgba(0,0,0,0.85), 0 0 0 1px ${accent}22`,
-          fontSize: 12, color: '#94a3b8', lineHeight: 1.55,
+          boxShadow: `0 8px 40px rgba(0,0,0,0.9), 0 0 0 1px ${accent}22`,
+          fontSize: 12, color: V.textSecond, lineHeight: 1.55,
         }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: accent,
-              fontVariantNumeric: 'tabular-nums', marginBottom: 2 }}>{value}</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{def.label}</div>
+            <div style={{
+              fontSize: 22, fontWeight: 700, color: accent,
+              fontVariantNumeric: 'tabular-nums', marginBottom: 2, fontFamily: V.mono,
+            }}>{value}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: V.textPrimary }}>{def.label}</div>
           </div>
           <button onClick={onClose} style={{
             background: 'none', border: 'none', cursor: 'pointer',
-            color: '#475569', fontSize: 18, lineHeight: 1, padding: '0 2px', marginLeft: 16,
+            color: V.textMuted, fontSize: 18, lineHeight: 1, padding: '0 2px', marginLeft: 16,
           }}>✕</button>
         </div>
 
         {/* Description */}
-        <p style={{ marginBottom: 12, color: '#94a3b8' }}>{def.description}</p>
+        <p style={{ marginBottom: 12, color: V.textSecond }}>{def.description}</p>
 
         {/* Formula */}
         {def.formula && (
           <>
-            <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase',
-              letterSpacing: '0.08em', marginBottom: 4 }}>Formula</div>
             <div style={{
-              background: 'rgba(30,41,59,0.8)', borderRadius: 6,
-              padding: '7px 11px', fontFamily: 'monospace', fontSize: 11,
-              color: '#7dd3fc', marginBottom: 12, wordBreak: 'break-all',
+              fontSize: 9, color: V.textMuted, textTransform: 'uppercase',
+              letterSpacing: '0.08em', marginBottom: 4, fontFamily: V.mono,
+            }}>Formula</div>
+            <div style={{
+              background: 'rgba(69,26,3,0.5)', border: `1px solid ${V.borderWarm}`,
+              borderRadius: 5, padding: '7px 11px', fontFamily: V.mono, fontSize: 11,
+              color: V.amberBright, marginBottom: 12, wordBreak: 'break-all',
             }}>
               {def.formula}
             </div>
@@ -209,8 +232,8 @@ function MetricModal({ def, value, onClose }) {
         {/* Research note */}
         {def.research && (
           <div style={{
-            fontSize: 10, color: '#334155', fontStyle: 'italic',
-            borderTop: '1px solid #1e293b', paddingTop: 8,
+            fontSize: 10, color: V.textFaint, fontStyle: 'italic',
+            borderTop: `1px solid ${V.border}`, paddingTop: 8, fontFamily: V.mono,
           }}>
             {def.research}
           </div>
@@ -220,12 +243,12 @@ function MetricModal({ def, value, onClose }) {
   );
 }
 
-// ── Rich stat pill with hover tooltip and click-to-modal ──────────────────────
+// ── Rich stat pill ────────────────────────────────────────────────────────────
 
 function StatPill({ metricKey, value, onOpenModal }) {
   const [hovered, setHovered] = useState(false);
   const def    = METRIC_DEFS[metricKey] || {};
-  const accent = def.accent || '#3b82f6';
+  const accent = def.accent || V.amber;
 
   return (
     <div
@@ -233,15 +256,14 @@ function StatPill({ metricKey, value, onOpenModal }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Main pill */}
       <div
         onClick={() => def.description && onOpenModal && onOpenModal(metricKey, value)}
         style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center',
           padding: '6px 14px',
-          background: hovered ? 'rgba(30,30,40,0.9)' : 'rgba(15,15,15,0.5)',
-          border: `1px solid ${hovered ? accent + '66' : '#1e293b'}`,
-          borderRadius: 7,
+          background: hovered ? `rgba(${hexToRgb(accent)},0.08)` : 'rgba(13,11,9,0.55)',
+          border: `1px solid ${hovered ? accent + '55' : V.border}`,
+          borderRadius: 6,
           cursor: def.description ? 'pointer' : 'default',
           transition: 'background .15s, border-color .15s',
           minWidth: 130,
@@ -250,18 +272,19 @@ function StatPill({ metricKey, value, onOpenModal }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <span style={{
             fontSize: 16, fontWeight: 700, color: accent,
-            lineHeight: 1.15, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+            lineHeight: 1.15, fontVariantNumeric: 'tabular-nums',
+            whiteSpace: 'nowrap', fontFamily: V.mono,
           }}>{value}</span>
           {def.description && (
             <span style={{
-              fontSize: 10, color: hovered ? accent : '#374151',
+              fontSize: 10, color: hovered ? accent : V.textFaint,
               transition: 'color .12s', lineHeight: 1,
             }}>ⓘ</span>
           )}
         </div>
         <div style={{
-          fontSize: 9, color: '#475569', textTransform: 'uppercase',
-          letterSpacing: '0.06em', marginTop: 2, whiteSpace: 'nowrap',
+          fontSize: 9, color: V.textMuted, textTransform: 'uppercase',
+          letterSpacing: '0.06em', marginTop: 2, whiteSpace: 'nowrap', fontFamily: V.mono,
         }}>{def.label || metricKey}</div>
       </div>
 
@@ -270,21 +293,29 @@ function StatPill({ metricKey, value, onOpenModal }) {
         <div style={{
           position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%',
           transform: 'translateX(-50%)',
-          background: 'rgba(8,8,18,0.97)', border: '1px solid #1e293b',
+          background: 'rgba(13,11,9,0.97)', border: `1px solid ${V.border}`,
           borderRadius: 6, padding: '7px 11px',
           minWidth: 200, maxWidth: 280, zIndex: 200,
-          fontSize: 11, color: '#94a3b8', lineHeight: 1.45,
+          fontSize: 11, color: V.textSecond, lineHeight: 1.45,
           whiteSpace: 'normal', pointerEvents: 'none',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.7)',
         }}>
           {def.description}
-          <div style={{ marginTop: 4, fontSize: 9, color: '#475569' }}>
-            Click to see formula and references
+          <div style={{ marginTop: 4, fontSize: 9, color: V.textMuted, fontFamily: V.mono }}>
+            Click for formula and references
           </div>
         </div>
       )}
     </div>
   );
+}
+
+// small helper — convert hex to rgb triplet for rgba()
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `${r},${g},${b}`;
 }
 
 // ── Layer / camera panel ──────────────────────────────────────────────────────
@@ -305,14 +336,14 @@ function LayerPanel({ layers, onToggle, pointSize, onPointSize, camMode, onCam }
   return (
     <div style={{
       position: 'absolute', top: 12, right: 12, zIndex: 10,
-      background: 'rgba(13,13,13,0.93)', border: '1px solid #1f2937',
-      borderRadius: 8, backdropFilter: 'blur(6px)', minWidth: 170,
+      background: 'rgba(13,11,9,0.95)', border: `1px solid ${V.border}`,
+      borderRadius: 8, backdropFilter: 'blur(8px)', minWidth: 170,
     }}>
       <button onClick={() => setOpen(o => !o)} style={{
         width: '100%', background: 'none', border: 'none',
         padding: '7px 12px', cursor: 'pointer', display: 'flex',
-        justifyContent: 'space-between', fontSize: 10, color: '#64748b',
-        letterSpacing: '0.08em', textTransform: 'uppercase',
+        justifyContent: 'space-between', fontSize: 9, color: V.textMuted,
+        letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: V.mono,
       }}>
         Layers <span>{open ? '▲' : '▼'}</span>
       </button>
@@ -325,36 +356,44 @@ function LayerPanel({ layers, onToggle, pointSize, onPointSize, camMode, onCam }
               padding: '3px 0', cursor: 'pointer', userSelect: 'none',
             }}>
               <div style={{
-                width: 13, height: 13, borderRadius: 3,
-                border: '1px solid #374151', flexShrink: 0,
-                background: layers[l.key] ? '#3b82f6' : 'transparent',
-                transition: 'background .12s',
+                width: 12, height: 12, borderRadius: 2,
+                border: `1px solid ${layers[l.key] ? V.amber : V.border}`,
+                flexShrink: 0,
+                background: layers[l.key] ? V.amber : 'transparent',
+                transition: 'background .12s, border-color .12s',
               }} />
-              <span style={{ fontSize: 12, color: layers[l.key] ? '#e2e8f0' : '#475569' }}>
+              <span style={{
+                fontSize: 11, color: layers[l.key] ? V.textPrimary : V.textMuted,
+              }}>
                 {l.label}
               </span>
             </div>
           ))}
 
-          <div style={{ marginTop: 10, borderTop: '1px solid #1f2937', paddingTop: 8 }}>
-            <div style={{ fontSize: 10, color: '#475569', marginBottom: 4,
-              textTransform: 'uppercase', letterSpacing: '0.06em' }}>Point Size</div>
+          <div style={{ marginTop: 10, borderTop: `1px solid ${V.border}`, paddingTop: 8 }}>
+            <div style={{
+              fontSize: 9, color: V.textMuted, marginBottom: 4,
+              textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: V.mono,
+            }}>Point Size</div>
             <input type="range" min={0.004} max={0.05} step={0.001}
               value={pointSize} onChange={e => onPointSize(+e.target.value)}
               style={{ width: '100%' }}
             />
           </div>
 
-          <div style={{ marginTop: 10, borderTop: '1px solid #1f2937', paddingTop: 8 }}>
-            <div style={{ fontSize: 10, color: '#475569', marginBottom: 6,
-              textTransform: 'uppercase', letterSpacing: '0.06em' }}>Camera</div>
+          <div style={{ marginTop: 10, borderTop: `1px solid ${V.border}`, paddingTop: 8 }}>
+            <div style={{
+              fontSize: 9, color: V.textMuted, marginBottom: 6,
+              textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: V.mono,
+            }}>Camera</div>
             <div style={{ display: 'flex', gap: 4 }}>
               {CAM_BTNS.map(b => (
                 <button key={b.id} onClick={() => onCam(b.id)} style={{
-                  flex: 1, padding: '4px 0', fontSize: 10, cursor: 'pointer', borderRadius: 4,
-                  background: camMode === b.id ? '#172554' : 'transparent',
-                  border: `1px solid ${camMode === b.id ? '#3b82f6' : '#1f2937'}`,
-                  color: camMode === b.id ? '#60a5fa' : '#475569',
+                  flex: 1, padding: '4px 0', fontSize: 9, cursor: 'pointer', borderRadius: 4,
+                  fontFamily: V.mono,
+                  background: camMode === b.id ? V.amberDim : 'transparent',
+                  border: `1px solid ${camMode === b.id ? V.amber : V.border}`,
+                  color: camMode === b.id ? V.amberBright : V.textMuted,
                   transition: 'all .12s',
                 }}>{b.label}</button>
               ))}
@@ -362,9 +401,11 @@ function LayerPanel({ layers, onToggle, pointSize, onPointSize, camMode, onCam }
           </div>
 
           {/* Proxemics zone legend */}
-          <div style={{ marginTop: 10, borderTop: '1px solid #1f2937', paddingTop: 8 }}>
-            <div style={{ fontSize: 9, color: '#475569', marginBottom: 5,
-              textTransform: 'uppercase', letterSpacing: '0.06em' }}>Proximity Zones</div>
+          <div style={{ marginTop: 10, borderTop: `1px solid ${V.border}`, paddingTop: 8 }}>
+            <div style={{
+              fontSize: 9, color: V.textMuted, marginBottom: 5,
+              textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: V.mono,
+            }}>Proximity Zones</div>
             {[
               { zone: 'intimate', label: 'Intimate  < 0.45 m' },
               { zone: 'personal', label: 'Personal  < 1.2 m'  },
@@ -372,7 +413,7 @@ function LayerPanel({ layers, onToggle, pointSize, onPointSize, camMode, onCam }
             ].map(({ zone, label }) => (
               <div key={zone} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
                 <div style={{ width: 8, height: 8, borderRadius: 2, background: ZONE_HEX[zone] }} />
-                <span style={{ fontSize: 9, color: '#475569' }}>{label}</span>
+                <span style={{ fontSize: 9, color: V.textMuted, fontFamily: V.mono }}>{label}</span>
               </div>
             ))}
           </div>
@@ -385,8 +426,8 @@ function LayerPanel({ layers, onToggle, pointSize, onPointSize, camMode, onCam }
 // ── Playback bar ──────────────────────────────────────────────────────────────
 
 const PB = {
-  background: 'transparent', border: '1px solid #1e293b',
-  borderRadius: 4, color: '#94a3b8', fontSize: 13,
+  background: 'transparent', border: `1px solid ${V.border}`,
+  borderRadius: 4, color: V.textSecond, fontSize: 13,
   padding: '3px 8px', cursor: 'pointer', lineHeight: 1,
 };
 
@@ -396,36 +437,36 @@ function PlaybackBar({ frame, total, playing, speed, loop,
     <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8 }}>
       <button onClick={() => onStep(-1)} style={PB}>‹</button>
       <button onClick={onPlay} style={{
-        ...PB, color: '#60a5fa', borderColor: '#1d4ed8', padding: '3px 12px',
+        ...PB, color: V.amberBright, borderColor: V.amber, padding: '3px 12px',
       }}>{playing ? '⏸' : '▶'}</button>
       <button onClick={() => onStep(1)} style={PB}>›</button>
 
       <div style={{ display: 'flex', gap: 3, marginLeft: 6 }}>
         {SPEED_STEPS.map(s => (
           <button key={s} onClick={() => onSpeed(s)} style={{
-            ...PB, fontSize: 9, padding: '2px 5px',
-            background:  speed === s ? '#172554' : 'transparent',
-            borderColor: speed === s ? '#3b82f6' : '#1e293b',
-            color:       speed === s ? '#60a5fa' : '#475569',
+            ...PB, fontSize: 9, padding: '2px 5px', fontFamily: V.mono,
+            background:  speed === s ? V.amberDim : 'transparent',
+            borderColor: speed === s ? V.amber : V.border,
+            color:       speed === s ? V.amberBright : V.textMuted,
           }}>{s}×</button>
         ))}
       </div>
 
       <button onClick={onLoop} title="Loop" style={{
         ...PB, marginLeft: 2, fontSize: 12,
-        background:  loop ? '#172554' : 'transparent',
-        borderColor: loop ? '#3b82f6' : '#1e293b',
-        color:       loop ? '#60a5fa' : '#475569',
+        background:  loop ? V.amberDim : 'transparent',
+        borderColor: loop ? V.amber : V.border,
+        color:       loop ? V.amberBright : V.textMuted,
       }}>↻</button>
 
       <span style={{ flex: 1 }} />
       <span ref={fpsRef} style={{
-        fontSize: 10, color: '#22c55e', fontVariantNumeric: 'tabular-nums',
-        minWidth: 38, textAlign: 'right',
+        fontSize: 10, color: V.green, fontVariantNumeric: 'tabular-nums',
+        minWidth: 38, textAlign: 'right', fontFamily: V.mono,
       }}>-- fps</span>
       <span style={{
-        fontSize: 11, color: '#64748b', fontVariantNumeric: 'tabular-nums',
-        marginLeft: 10,
+        fontSize: 10, color: V.textMuted, fontVariantNumeric: 'tabular-nums',
+        marginLeft: 10, fontFamily: V.mono,
       }}>Frame {frame + 1} / {total}</span>
       <button onClick={onShot} title="Screenshot" style={{ ...PB, fontSize: 11, marginLeft: 4 }}>📷</button>
     </div>
@@ -450,7 +491,7 @@ function InteractionTimeline({ colors, frame, total, onSeek }) {
         c === 'personal'  ? ZONE_HEX.personal  :
         c === 'social'    ? ZONE_HEX.social    :
         c === 'contact'   ? ZONE_HEX.intimate  :
-        c === 'proximity' ? ZONE_HEX.personal  : '#1a2236';
+        c === 'proximity' ? ZONE_HEX.personal  : '#18100a';
       ctx.fillRect(i * w, 0, w + 0.5, H);
     });
   }, [colors]);
@@ -465,32 +506,28 @@ function InteractionTimeline({ colors, frame, total, onSeek }) {
   };
 
   return (
-    <div style={{ position: 'relative', height: 12, marginBottom: 3, cursor: 'crosshair' }}
+    <div style={{ position: 'relative', height: 10, marginBottom: 3, cursor: 'crosshair' }}
       onClick={handleClick}>
-      <canvas ref={cvRef} width={1200} height={12}
+      <canvas ref={cvRef} width={1200} height={10}
         style={{ width: '100%', height: '100%', borderRadius: 2, display: 'block' }} />
       <div style={{
         position: 'absolute', top: 0, bottom: 0, left: `${pct * 100}%`,
-        width: 2, background: '#fff', opacity: 0.75,
+        width: 2, background: V.amberBright, opacity: 0.85,
         transform: 'translateX(-50%)', pointerEvents: 'none', borderRadius: 1,
       }} />
     </div>
   );
 }
 
-// ── Action display — compact badges + optional full timeline ──────────────────
-// Collapsed (default): one colored badge per person showing CURRENT action.
-// Expanded: full per-person timeline strips, max-height scrollable.
+// ── Action display ────────────────────────────────────────────────────────────
 
 function ActionDisplay({ frameData, personIds, frame, onSeek }) {
   const [expanded, setExpanded] = useState(false);
   const canvasesRef = useRef({});
   const total = frameData.length;
 
-  // Current frame humans for badge display
   const currentHumans = (frameData[frame] || {}).humans || [];
 
-  // Repaint timeline strips when frameData or personIds change
   useEffect(() => {
     if (!expanded || !total) return;
     personIds.forEach(pid => {
@@ -502,7 +539,7 @@ function ActionDisplay({ frameData, personIds, frame, onSeek }) {
       const w = W / total;
       frameData.forEach((fd, i) => {
         const h = (fd.humans || []).find(hu => hu.id === pid);
-        ctx.fillStyle = h?.action ? (ACTION_COLORS[h.action] || '#1a2236') : '#1a2236';
+        ctx.fillStyle = h?.action ? (ACTION_COLORS[h.action] || '#18100a') : '#18100a';
         ctx.fillRect(i * w, 0, w + 0.5, H);
       });
     });
@@ -519,12 +556,12 @@ function ActionDisplay({ frameData, personIds, frame, onSeek }) {
 
   return (
     <div style={{ marginBottom: 4 }}>
-      {/* Row 1: per-person action badge chips + expand toggle */}
+      {/* Row 1: per-subject action badge chips + expand toggle */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
         {personIds.map(pid => {
           const h    = currentHumans.find(hu => hu.id === pid);
           const act  = h?.action || '—';
-          const col  = ACTION_COLORS[act] || '#475569';
+          const col  = ACTION_COLORS[act] || V.textMuted;
           const pCol = PALETTE_HEX[pid % PALETTE_HEX.length];
           return (
             <div key={pid} style={{
@@ -533,46 +570,42 @@ function ActionDisplay({ frameData, personIds, frame, onSeek }) {
               background: col + '18', border: `1px solid ${col}44`,
             }}>
               <div style={{
-                width: 7, height: 7, borderRadius: '50%',
+                width: 6, height: 6, borderRadius: '50%',
                 background: pCol, flexShrink: 0,
               }} />
-              <span style={{ fontSize: 9, color: pCol, fontWeight: 600 }}>P{pid}</span>
-              <span style={{ fontSize: 9, color: col }}>{act}</span>
+              <span style={{ fontSize: 9, color: pCol, fontWeight: 600, fontFamily: V.mono }}>
+                S-{pid.toString().padStart(2, '0')}
+              </span>
+              <span style={{ fontSize: 9, color: col, fontFamily: V.mono }}>{act}</span>
             </div>
           );
         })}
 
-        {/* Toggle button */}
         <button
           onClick={() => setExpanded(x => !x)}
           style={{
             marginLeft: 'auto', background: 'none',
-            border: '1px solid #1e293b', borderRadius: 4,
-            color: '#475569', fontSize: 9, cursor: 'pointer',
+            border: `1px solid ${V.border}`, borderRadius: 4,
+            color: V.textMuted, fontSize: 9, cursor: 'pointer',
             padding: '2px 7px', letterSpacing: '0.06em',
-            textTransform: 'uppercase',
+            textTransform: 'uppercase', fontFamily: V.mono,
             transition: 'border-color .12s, color .12s',
           }}
           title={expanded ? 'Hide full action timeline' : 'Show full action timeline'}
         >
-          {expanded ? '▲ hide timeline' : '▼ full timeline'}
+          {expanded ? '▲ hide' : '▼ expand'}
         </button>
       </div>
 
-      {/* Row 2 (expanded): full per-person timeline strips */}
+      {/* Row 2 (expanded): full per-subject timeline strips */}
       {expanded && (
-        <div style={{
-          marginTop: 5,
-          maxHeight: 110,           // show ≤4 strips before scrolling
-          overflowY: 'auto',
-          paddingRight: 2,
-        }}>
+        <div style={{ marginTop: 5, maxHeight: 110, overflowY: 'auto', paddingRight: 2 }}>
           {personIds.map(pid => (
             <div key={pid} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
               <span style={{
                 fontSize: 8, color: PALETTE_HEX[pid % PALETTE_HEX.length],
-                width: 20, flexShrink: 0, textAlign: 'right',
-              }}>P{pid}</span>
+                width: 28, flexShrink: 0, textAlign: 'right', fontFamily: V.mono,
+              }}>S-{pid.toString().padStart(2,'0')}</span>
               <div
                 style={{ flex: 1, position: 'relative', height: 9, cursor: 'crosshair' }}
                 onClick={handleSeekClick}
@@ -584,7 +617,7 @@ function ActionDisplay({ frameData, personIds, frame, onSeek }) {
                 />
                 <div style={{
                   position: 'absolute', top: 0, bottom: 0, left: `${pct * 100}%`,
-                  width: 2, background: '#fff', opacity: 0.55,
+                  width: 2, background: V.amberBright, opacity: 0.65,
                   transform: 'translateX(-50%)', pointerEvents: 'none',
                 }} />
               </div>
@@ -592,11 +625,11 @@ function ActionDisplay({ frameData, personIds, frame, onSeek }) {
           ))}
 
           {/* Legend */}
-          <div style={{ display: 'flex', gap: 7, marginTop: 3, flexWrap: 'wrap', paddingLeft: 24 }}>
+          <div style={{ display: 'flex', gap: 7, marginTop: 3, flexWrap: 'wrap', paddingLeft: 32 }}>
             {Object.entries(ACTION_COLORS).map(([action, color]) => (
               <div key={action} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                 <div style={{ width: 6, height: 6, borderRadius: 1, background: color }} />
-                <span style={{ fontSize: 7.5, color: '#64748b' }}>{action}</span>
+                <span style={{ fontSize: 7.5, color: V.textMuted, fontFamily: V.mono }}>{action}</span>
               </div>
             ))}
           </div>
@@ -637,7 +670,7 @@ function Viewer({ plyUrl, jsonUrl }) {
   const [heatmapMeta,    setHeatmapMeta]    = useState(null);
   const [personIds,      setPersonIds]      = useState([]);
   const [frameData,      setFrameData]      = useState([]);
-  const [modalInfo,      setModalInfo]      = useState(null); // { metricKey, value }
+  const [modalInfo,      setModalInfo]      = useState(null);
 
   useEffect(() => { totalRef.current = total; }, [total]);
   useEffect(() => { loopRef.current  = loop;  }, [loop]);
@@ -660,9 +693,9 @@ function Viewer({ plyUrl, jsonUrl }) {
     }
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0f0f0f);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const dLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    scene.background = new THREE.Color(0x09090b);   // warm dark
+    scene.add(new THREE.AmbientLight(0xfff8f0, 0.6));  // warm ambient
+    const dLight = new THREE.DirectionalLight(0xfff4e0, 0.9);
     dLight.position.set(5, 10, 5);
     scene.add(dLight);
 
@@ -677,7 +710,8 @@ function Viewer({ plyUrl, jsonUrl }) {
     controls.maxDistance   = 80;
     controls.update();
 
-    const grid = new THREE.GridHelper(40, 80, 0x1a1a1a, 0x141414);
+    // Warm dark amber grid (not cold gray)
+    const grid = new THREE.GridHelper(40, 80, 0x1c0e00, 0x130900);
     scene.add(grid);
 
     threeRef.current = { renderer, scene, camera, controls, grid };
@@ -695,12 +729,10 @@ function Viewer({ plyUrl, jsonUrl }) {
         ctx.clearRect(0, 0, lcv.width, lcv.height);
         const fd = frameDataRef.current[frameRef.current];
         if (fd) {
-          ctx.font = '500 11px system-ui, sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           (fd.humans || []).forEach(h => {
             if (!h.action) return;
-            // Use head joint (Y-DOWN → fy = correct Three.js position) or fallback to world_pos
             const headVec = (h.joints && h.joints.length > 15)
               ? fy(h.joints[15])
               : h.world_pos ? fy(h.world_pos) : null;
@@ -708,13 +740,23 @@ function Viewer({ plyUrl, jsonUrl }) {
             const v3 = headVec.project(camera);
             if (v3.z > 1.0) return;
             const sx = (v3.x *  0.5 + 0.5) * lcv.width;
-            const sy = (v3.y * -0.5 + 0.5) * lcv.height - 22;
-            const color = ACTION_COLORS[h.action] || '#94a3b8';
-            const tw = ctx.measureText(h.action).width;
-            ctx.fillStyle = 'rgba(0,0,0,0.58)';
-            ctx.fillRect(sx - tw / 2 - 5, sy - 8, tw + 10, 17);
+            const sy = (v3.y * -0.5 + 0.5) * lcv.height - 24;
+            const color = ACTION_COLORS[h.action] || V.textSecond;
+            const pid = h.id;
+            const label = `S-${pid.toString().padStart(2,'0')} · ${h.action}`;
+            ctx.font = `500 10px ${V.mono}`;
+            const tw = ctx.measureText(label).width;
+            // pill background
+            ctx.fillStyle = 'rgba(9,9,11,0.72)';
+            roundRect(ctx, sx - tw/2 - 7, sy - 9, tw + 14, 18, 4);
+            ctx.fill();
+            // amber left border marker
             ctx.fillStyle = color;
-            ctx.fillText(h.action, sx, sy + 1);
+            roundRect(ctx, sx - tw/2 - 7, sy - 9, 3, 18, 2);
+            ctx.fill();
+            // text
+            ctx.fillStyle = color;
+            ctx.fillText(label, sx + 1, sy + 1);
           });
         }
       }
@@ -749,9 +791,9 @@ function Viewer({ plyUrl, jsonUrl }) {
       const mat = new THREE.PointsMaterial({
         size: 0.018, sizeAttenuation: true, vertexColors: hasColor,
       });
-      if (!hasColor) mat.color.set(0x4a6080);
+      if (!hasColor) mat.color.set(0x6b5a40);  // warm fallback
       const pts = new THREE.Points(geo, mat);
-      pts.scale.y = -1;   // OpenCV Y-down PLY → Three.js Y-up
+      pts.scale.y = -1;
       scene.add(pts);
       threeRef.current.cloudPts = pts;
       threeRef.current.cloudMat = mat;
@@ -829,12 +871,10 @@ function Viewer({ plyUrl, jsonUrl }) {
       const faces = meta.smpl_faces;
       if (faces && faces.length > 0) facesRef.current = new Uint32Array(faces.flat());
 
-      // ── Heatmap bounds: use metadata if available, else compute from positions ──
       const enrichedMeta = enriched.metadata || {};
       if (enrichedMeta.heatmap) {
         setHeatmapMeta(enrichedMeta.heatmap);
       } else if (frames.length > 0) {
-        // Compute XZ bounds from human positions (fallback — shows activity zone)
         const allPos = frames.flatMap(fd => (fd.humans || []).map(h => h.world_pos));
         if (allPos.length > 0) {
           const margin = 0.7;
@@ -853,7 +893,6 @@ function Viewer({ plyUrl, jsonUrl }) {
       frames.forEach(fd => (fd.humans || []).forEach(h => ids.add(h.id)));
       setPersonIds([...ids].sort((a, b) => a - b));
 
-      // Timeline colors: use zone field if present (new analytics), else legacy type
       const colors = frames.map(fd => {
         if (!fd.interactions || !fd.interactions.length) return 'none';
         const zones = fd.interactions.map(ix =>
@@ -876,8 +915,6 @@ function Viewer({ plyUrl, jsonUrl }) {
   }, [jsonUrl]);
 
   // ── Heatmap floor plane ───────────────────────────────────────────────────
-  // Created when bounds available + PLY loaded; shows activity zone tint,
-  // loads heatmap.png texture when available.
   useEffect(() => {
     const { scene } = threeRef.current;
     if (!scene || !heatmapMeta || !plyReady) return;
@@ -898,9 +935,8 @@ function Viewer({ plyUrl, jsonUrl }) {
     const cz = (z_min + z_max) / 2;
     const floorY = threeRef.current.floorY ?? 0;
 
-    // Start with a visible tint; replaced by actual heatmap texture when PNG loads
     const mat = new THREE.MeshBasicMaterial({
-      color: 0x0d2e1e,     // dark green tint — visible even without texture
+      color: 0x1c0a00,
       transparent: true, opacity: 0.35,
       depthWrite: false, side: THREE.DoubleSide,
     });
@@ -912,7 +948,6 @@ function Viewer({ plyUrl, jsonUrl }) {
     scene.add(plane);
     threeRef.current.heatmapPlane = plane;
 
-    // Try to load heatmap.png (may not exist for old jobs)
     const hmUrl = jsonUrl.replace('enriched_data.json', 'heatmap.png');
     new THREE.TextureLoader().load(
       hmUrl,
@@ -920,14 +955,12 @@ function Viewer({ plyUrl, jsonUrl }) {
         texture.minFilter = THREE.LinearFilter;
         texture.magFilter = THREE.LinearFilter;
         mat.map     = texture;
-        mat.color.set(0xffffff);  // white so texture colours show properly
+        mat.color.set(0xffffff);
         mat.opacity = 0.60;
         mat.needsUpdate = true;
       },
       undefined,
-      () => {
-        // PNG not found — keep the tinted rectangle as fallback
-      }
+      () => {}
     );
   }, [heatmapMeta, plyReady, jsonUrl]);
 
@@ -1086,11 +1119,7 @@ function Viewer({ plyUrl, jsonUrl }) {
         }
       }
 
-      // Gaze / facing arrow — rendered FROM the head, shows facing direction.
-      // gaze_vec is in OpenCV Y-DOWN convention; fy() converts to Three.js Y-UP.
-      // Origin: joints[15] (head joint, Y-DOWN → fy → correct Three.js position).
-      // Fallback (no joints): fy(world_pos) which coincidentally renders at head height
-      //   because world_pos Y-UP vertices and head joints share a ~0.25 m Three.js Y level.
+      // Gaze arrow — red thread aesthetic for crime-board feel
       if (layers.gaze && h.gaze_vec) {
         const arrowOrigin = (h.joints && h.joints.length > 15)
           ? fy(h.joints[15])
@@ -1120,12 +1149,11 @@ function Viewer({ plyUrl, jsonUrl }) {
       }
     });
 
-    // Interaction edges — coloured by Hall proxemics zone
+    // Interaction edges — zone-coloured (already red/orange/amber = crime board)
     if (layers.interactions) {
       (fd.interactions || []).forEach(ix => {
         const h1 = byId[ix.source], h2 = byId[ix.target];
         if (!h1 || !h2) return;
-        // Only render intimate, personal, and social zones (skip public)
         const zone = ix.zone || (ix.distance < 0.45 ? 'intimate' :
                                   ix.distance < 1.2  ? 'personal' :
                                   ix.distance < 3.7  ? 'social'   : 'public');
@@ -1139,14 +1167,13 @@ function Viewer({ plyUrl, jsonUrl }) {
         group.add(new THREE.Line(geo, new THREE.LineBasicMaterial({
           color: zoneColor, transparent: true, opacity: zoneOpacity,
         })));
-        // If mutual gaze detected, add a small highlight sphere at midpoint
         if (ix.mutual_gaze) {
           const mid = new THREE.Vector3()
             .addVectors(fy(h1.world_pos), fy(h2.world_pos))
             .multiplyScalar(0.5);
           const mg = new THREE.Mesh(
             new THREE.SphereGeometry(0.04, 6, 4),
-            new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.6, transparent: true })
+            new THREE.MeshBasicMaterial({ color: 0xfcd34d, opacity: 0.7, transparent: true })
           );
           mg.position.copy(mid);
           group.add(mg);
@@ -1201,7 +1228,7 @@ function Viewer({ plyUrl, jsonUrl }) {
     renderer.render(scene, camera);
     const a = document.createElement('a');
     a.href     = renderer.domElement.toDataURL('image/png');
-    a.download = `sitl_frame_${frame + 1}.png`;
+    a.download = `bodyplot_frame_${frame + 1}.png`;
     a.click();
   }, [frame]);
 
@@ -1224,15 +1251,15 @@ function Viewer({ plyUrl, jsonUrl }) {
       {!plyReady && !loadError && (
         <div style={OVL}>
           <Spinner />
-          <span style={{ marginTop: 10, color: '#475569', fontSize: 13 }}>
-            Loading point cloud…
+          <span style={{ marginTop: 10, color: V.textMuted, fontSize: 12, fontFamily: V.mono }}>
+            Loading scene…
           </span>
         </div>
       )}
 
       {/* Error overlay */}
       {loadError && (
-        <div style={{ ...OVL, color: '#ef4444', fontSize: 12, padding: 24, textAlign: 'center' }}>
+        <div style={{ ...OVL, color: V.red, fontSize: 12, padding: 24, textAlign: 'center', fontFamily: V.mono }}>
           {loadError}
         </div>
       )}
@@ -1255,9 +1282,9 @@ function Viewer({ plyUrl, jsonUrl }) {
       {total > 0 && (
         <div style={{
           position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 3,
-          background: 'linear-gradient(to top, rgba(5,5,8,0.97) 60%, rgba(5,5,8,0.82))',
-          backdropFilter: 'blur(10px)',
-          borderTop: '1px solid #1e293b',
+          background: 'linear-gradient(to top, rgba(9,9,11,0.98) 65%, rgba(9,9,11,0.80))',
+          backdropFilter: 'blur(12px)',
+          borderTop: `1px solid ${V.borderWarm}`,
           padding: '10px 18px 13px',
         }}>
 
@@ -1298,7 +1325,7 @@ function Viewer({ plyUrl, jsonUrl }) {
             fpsRef={fpsDisplayRef}
           />
 
-          {/* Action display — compact badges, expandable to full timeline */}
+          {/* Subject action badges + optional full timeline */}
           {personIds.length > 0 && frameData.length > 0 && (
             <ActionDisplay
               frameData={frameData} personIds={personIds}
@@ -1322,13 +1349,13 @@ function Viewer({ plyUrl, jsonUrl }) {
           />
           <div style={{
             display: 'flex', justifyContent: 'space-between',
-            color: '#1e293b', fontSize: 9, marginTop: 3,
+            fontSize: 9, marginTop: 3, fontFamily: V.mono,
           }}>
-            <span>0</span>
-            <span style={{ color: '#334155' }}>
+            <span style={{ color: V.textFaint }}>0</span>
+            <span style={{ color: V.textMuted }}>
               Space play/pause · ←/→ step · 1–5 speed · click strip to seek
             </span>
-            <span>{total - 1}</span>
+            <span style={{ color: V.textFaint }}>{total - 1}</span>
           </div>
         </div>
       )}
@@ -1348,10 +1375,25 @@ function Spinner() {
   return (
     <div style={{
       width: 32, height: 32, borderRadius: '50%',
-      border: '3px solid #1f2937', borderTopColor: '#3b82f6',
+      border: `3px solid ${V.border}`, borderTopColor: V.amber,
       animation: 'spin 0.8s linear infinite',
     }} />
   );
+}
+
+// Canvas rounded-rect helper (CanvasRenderingContext2D.roundRect not available in all browsers)
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 
 (function injectCSS() {
