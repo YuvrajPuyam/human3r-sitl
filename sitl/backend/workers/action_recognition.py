@@ -72,7 +72,7 @@ def _try_load_motionbert():
         backbone = DSTformer(
             dim_in=3, dim_out=3,
             dim_feat=256, dim_rep=512,
-            depth=5, num_heads=8, mlp_ratio=2,
+            depth=5, num_heads=8, mlp_ratio=4,
             num_joints=17, maxlen=243,
             att_fuse=True,
         )
