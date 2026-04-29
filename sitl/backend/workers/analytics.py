@@ -1,9 +1,13 @@
 import os
 import json
+import logging
 import numpy as np
 from collections import Counter
 from scipy.spatial import KDTree
 from scipy.ndimage import gaussian_filter
+from .action_recognition import classify_person_sequence
+
+log = logging.getLogger(__name__)
 
 try:
     import matplotlib
@@ -169,63 +173,6 @@ def _pair_rays_converge(p1, g1, p2, g2, threshold: float = 1.0) -> bool:
 # SMPL-X joint indices: 0=pelvis, 4=L_knee, 5=R_knee, 15=head,
 # 16=L_shoulder, 17=R_shoulder, 20=L_wrist, 21=R_wrist
 
-def _classify_action(pos: list, head: list, joints: list, speed: float) -> str:
-    """
-    Per-frame action label from pelvis/head positions and optionally SMPL-X joints.
-    All positions in OpenCV Y-DOWN world coordinates (larger Y = physically lower).
-    """
-    if speed < 0.008:
-        base = "stationary"
-    elif speed < 0.05:
-        base = "walking"
-    else:
-        base = "running"
-
-    if not joints or len(joints) < 22:
-        return base
-
-    pelvis_y  = joints[0][1]
-    head_j_y  = joints[15][1]
-    l_knee_y  = joints[4][1]
-    r_knee_y  = joints[5][1]
-    l_shldr_y = joints[16][1]
-    r_shldr_y = joints[17][1]
-    l_wrist_y = joints[20][1]
-    r_wrist_y = joints[21][1]
-
-    avg_knee_y  = (l_knee_y + r_knee_y) / 2
-    avg_shldr_y = (l_shldr_y + r_shldr_y) / 2
-
-    # Sitting: knees close to pelvis height in Y-DOWN
-    # Standing: avg_knee_y - pelvis_y ≈ 0.4 (knees lower than pelvis)
-    # Sitting: avg_knee_y - pelvis_y < 0.18
-    if avg_knee_y - pelvis_y < 0.18:
-        return "sitting"
-
-    # Reaching: wrist raised above shoulder (smaller Y = higher in Y-DOWN)
-    if avg_shldr_y - min(l_wrist_y, r_wrist_y) > 0.2:
-        return "reaching"
-
-    # Bending: head closer to pelvis than expected upright height (~0.55 m)
-    if pelvis_y - head_j_y < 0.30:
-        return "bending"
-
-    return base
-
-
-def _smooth_sequence(seq: list, window: int = 7) -> list:
-    """Temporal majority-vote smoothing over a sliding window."""
-    n = len(seq)
-    if n == 0:
-        return seq
-    half = window // 2
-    smoothed = []
-    for i in range(n):
-        lo = max(0, i - half)
-        hi = min(n, i + half + 1)
-        votes = Counter(seq[lo:hi])
-        smoothed.append(votes.most_common(1)[0][0])
-    return smoothed
 
 
 # ── Proxemics helpers ─────────────────────────────────────────────────────────
@@ -380,7 +327,8 @@ async def compute_spatial_analytics(job_id: str):
     # Exceeding this is a tracking blip (person disappeared and reappeared far away).
     _MAX_SPEED = 0.35
 
-    person_action_refs: dict[int, list[tuple[int, int, str]]] = {}
+    # Maps person_id → list of (ef_idx, human_idx, joints_127, speed)
+    person_seq_data: dict[int, list[tuple[int, int, list, float]]] = {}
     enriched_frames = []
 
     for frame in frames:
@@ -436,21 +384,18 @@ async def compute_spatial_analytics(job_id: str):
             prev_positions[h_id]  = positions[i].copy()
             prev_frame_seen[h_id] = frame_idx
 
-            raw_action = _classify_action(
-                humans[i]["world_pos"],
-                humans[i]["head_world"],
-                humans[i].get("joints", []),
-                speed,
-            )
             ef["humans"][i]["gaze_vec"]      = gaze_vecs[i].tolist()
             ef["humans"][i]["contact_score"] = round(contact_score, 4)
             ef["humans"][i]["speed"]         = round(speed, 4)
-            ef["humans"][i]["action"]        = raw_action
+            ef["humans"][i]["action"]        = 'stationary'   # placeholder; filled below
 
             vox = tuple((positions[i] / VOXEL).astype(int))
             occupied_voxels.add(vox)
 
-            person_action_refs.setdefault(h_id, []).append((ef_idx, i, raw_action))
+            # Collect joint sequence for batch action classification after the loop
+            person_seq_data.setdefault(h_id, []).append(
+                (ef_idx, i, humans[i].get("joints", []), speed)
+            )
 
         # ── c) Pairwise interaction metrics (Hall proxemics + gaze + dynamics) ─
         any_personal  = False
@@ -529,14 +474,21 @@ async def compute_spatial_analytics(job_id: str):
 
         enriched_frames.append(ef)
 
-    # ── Post-loop: smooth action sequences ────────────────────────────────────
+    # ── Post-loop: batch action classification per person ─────────────────────
     action_distributions: dict[int, dict[str, float]] = {}
-    for h_id, entries in person_action_refs.items():
-        raw_seq  = [e[2] for e in entries]
-        smoothed = _smooth_sequence(raw_seq, window=7)
-        for idx, (ef_idx, hi, _) in enumerate(entries):
-            if idx < len(smoothed):
-                enriched_frames[ef_idx]["humans"][hi]["action"] = smoothed[idx]
+    for h_id, entries in person_seq_data.items():
+        joints_seq = [e[2] for e in entries]
+        speed_seq  = [e[3] for e in entries]
+        try:
+            smoothed = classify_person_sequence(joints_seq, speed_seq)
+        except Exception as exc:
+            log.warning('Action classification failed for person %s: %s', h_id, exc)
+            smoothed = ['stationary'] * len(entries)
+
+        for idx, (ef_idx, hi, _, _) in enumerate(entries):
+            action = smoothed[idx] if idx < len(smoothed) else 'stationary'
+            enriched_frames[ef_idx]["humans"][hi]["action"] = action
+
         counts  = Counter(smoothed)
         total_p = len(smoothed) or 1
         action_distributions[h_id] = {

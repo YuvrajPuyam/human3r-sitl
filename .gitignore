@@ -97,3 +97,7 @@ test_export/
 .idea/
 *.swp
 *.swo
+
+# ── Third-party model checkpoints (download separately) ──────────────────────
+sitl/third_party/MotionBERT/checkpoint/
+sitl/third_party/MotionBERT/data/
