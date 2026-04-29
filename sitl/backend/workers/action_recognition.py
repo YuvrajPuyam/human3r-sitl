@@ -251,16 +251,12 @@ def _locomotion_label(j17_t, speed, knee_lift):
     a large pelvis displacement on a clearly stationary pose. Running requires
     the knees to actually rise (knee_lift > -0.20).
     """
-    # Clearly stationary: no speed and deeply dropped knees
-    if speed < 0.005 and knee_lift < -0.60:
-        return 'stationary'
-
     # Running: knees raised to within 20% of body height from pelvis
     if knee_lift > -0.20:
         return 'running'
 
-    # Any remaining movement is walking
-    if speed > 0.005:
+    # Walking: moderate knee lift + meaningful speed
+    if knee_lift > -0.55 and speed > 0.008:
         return 'walking'
 
     return 'stationary'
@@ -337,13 +333,35 @@ def _classify_heuristic(j_seq_T17, speed_seq, pose_seq=None):
     Improved biomechanical heuristics using the H36M 17-joint sequence.
     Knee-lift ratio is the primary locomotion discriminator (fps-agnostic).
     Pose rotation vectors (pose_seq) used for robust sitting detection.
+
+    Sequence-level stationary gate: a genuine walking gait produces a cyclic
+    knee-lift pattern with std > 0.04. SMPL-X reconstruction jitter on a
+    standing person yields std < 0.02. When the whole sequence shows no gait
+    cycle, non-sitting frames are forced to 'stationary' regardless of speed.
     """
+    # ── Sequence-level knee-lift statistics ───────────────────────────────────
+    kl_vals = []
+    for j17 in j_seq_T17:
+        body_h = max(_body_height(j17), 0.1)
+        kl_vals.append(_knee_lift_ratio(j17, body_h))
+
+    kl_arr  = np.array(kl_vals)
+    kl_std  = float(np.std(kl_arr))
+    kl_mean = float(np.mean(kl_arr))
+
+    # Low variance + deeply dropped knees = no walking gait present
+    is_stationary_seq = kl_std < 0.04 and kl_mean < -0.50
+
     labels = []
     for t, j17 in enumerate(j_seq_T17):
         p53 = np.array(pose_seq[t]) if pose_seq and t < len(pose_seq) else None
         pose = _pose_label(j17, p53)
         if pose is not None:
             labels.append(pose)
+            continue
+
+        if is_stationary_seq:
+            labels.append('stationary')
             continue
 
         body_h    = _body_height(j17)
