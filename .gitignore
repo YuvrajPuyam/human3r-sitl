@@ -62,3 +62,38 @@ command
 *.pkl
 *.npy
 *.npz
+
+# ── SITL: job outputs (PLY + JSON per job, can be 100s of MB) ────────────────
+sitl/outputs/
+sitl/uploads/
+outputs/
+
+# ── Point clouds ──────────────────────────────────────────────────────────────
+*.ply
+
+# ── Video files ───────────────────────────────────────────────────────────────
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+
+# ── SMPL-X / body model weights (downloaded separately) ──────────────────────
+src/models/smplx/
+
+# ── Debug / one-off scripts (not part of the codebase) ───────────────────────
+debug.py
+debug_frame0.ply
+diagnostic2.py
+run_diagnostic.py
+test_export/
+
+# ── Environment ───────────────────────────────────────────────────────────────
+.env
+.env.*
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo

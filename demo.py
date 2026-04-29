@@ -29,6 +29,7 @@ from copy import deepcopy
 from add_ckpt_path import add_path_to_dust3r
 import imageio.v2 as iio
 import roma
+import json 
 
 # Set random seed for reproducibility.
 random.seed(42)
@@ -143,7 +144,14 @@ def parse_args():
         default=10,
         help="Mask morphology for the viewer",
     )
+    parser.add_argument(
+    "--no_vis",
+    action="store_true",
+    help="If set, skip launching the Viser 3D viewer.",
+    
+    )
     return parser.parse_args()
+    
 
 
 def prepare_input(
@@ -442,6 +450,37 @@ def prepare_output(
                     None, None, 
                     K=intrinsics_tosave[f_id].expand(n_humans_i, -1 , -1), 
                     expression=smpl_expression[f_id])
+                
+            # if f_id == 0:
+            #     verts_world = geotrf(
+            #         pr_poses[f_id],
+            #         smpl_out['smpl_v3d'].unsqueeze(0)
+            #     )[0]  # [N_humans, 10475, 3]
+
+            #     person_verts = verts_world[0]   # first person
+            #     pelvis_pos   = person_verts[0]  # vertex 0
+
+            #     print(f"\n=== VERTEX SEARCH ===")
+            #     print(f"Pelvis (v0): {pelvis_pos.numpy()}")
+
+            #     dists = torch.norm(person_verts - pelvis_pos, dim=1)
+            #     candidates = torch.where((dists > 0.25) & (dists < 0.65))[0]
+            #     print(f"Vertices 0.25–0.65m from pelvis: {len(candidates)} candidates")
+
+            #     for axis, name in enumerate(['X', 'Y', 'Z']):
+            #         axis_vals = person_verts[candidates, axis] - pelvis_pos[axis]
+            #         best_idx  = candidates[axis_vals.argmax()]
+            #         best_val  = axis_vals.max().item()
+            #         print(f"  Best head candidate along {name}: "
+            #             f"vertex {best_idx.item()}, delta={best_val:.3f}m")
+
+            #     top5 = torch.topk(dists, 5)
+            #     print(f"\nTop 5 most distant vertices from pelvis:")
+            #     for dist, idx in zip(top5.values, top5.indices):
+            #         v = person_verts[idx].numpy()
+            #         print(f"  vertex {idx.item():5d}: dist={dist:.3f}m  "
+            #             f"pos={np.round(v, 3)}")
+            #     print("=== END VERTEX SEARCH ===\n")
         
         depth = depths_tosave[f_id].numpy()
         conf = conf_self_tosave[f_id].numpy()
@@ -519,16 +558,28 @@ def prepare_output(
                 f'-vcodec h264 -preset fast -profile:v baseline -pix_fmt yuv420p '
                 f'-movflags +faststart -b:v 5000k "{video_path}"')
     
+    # return (
+    #     pts3ds_other,
+    #     colors, 
+    #     conf_other, 
+    #     cam_dict, 
+    #     all_verts, 
+    #     smpl_faces,
+    #     smpl_id,
+    #     msks
+    # )
+
+    smpl_params = {
+        "shapes": smpl_shape, 
+        "rotvecs": smpl_rotvec, 
+        "transls": smpl_transl
+    }
     return (
-        pts3ds_other,
-        colors, 
-        conf_other, 
-        cam_dict, 
-        all_verts, 
-        smpl_faces,
-        smpl_id,
-        msks
+        pts3ds_other, colors, conf_other, cam_dict, 
+        all_verts, smpl_faces, smpl_id, msks, smpl_params
     )
+
+
 
 def parse_seq_path(p):
     if os.path.isdir(p):
@@ -560,6 +611,269 @@ def parse_seq_path(p):
             img_paths.append(frame_path)
         cap.release()
     return img_paths, tmpdirname
+
+import json
+
+def save_fused_scene_ply(pts3ds_other, msks, colors, output_path, 
+                         stride=5, voxel_size=0.05, max_depth=10.0, mask_threshold=0.2):
+    """
+    Fuses multiple frames into a clean, human-free world-frame point cloud.
+    """
+    import numpy as np
+
+    print(f"🛠️  Fusing {len(pts3ds_other)} frames into a clean background...")
+
+    all_pts = []
+    all_cols = []
+
+    for i in range(0, len(pts3ds_other), stride):
+        # 1. Coordinate Extraction
+        pts = pts3ds_other[i]
+        if hasattr(pts, 'cpu'): pts = pts.cpu()
+        pts_np = pts.reshape(-1, 3).numpy()
+
+        # 2. Human Masking Logic
+        # msks[i] is [1, H, W] -> flatten to match the 512x512 point cloud
+        msk_np = msks[i].flatten().cpu().numpy()
+        
+        # 3. Spatial Filtering (Distance + Human Removal)
+        dists = np.linalg.norm(pts_np, axis=1)
+        # We only keep points that are:
+        # - Close enough (< max_depth)
+        # - Not a human (mask < threshold)
+        # - Valid (> 0.1 to avoid origin noise)
+        valid_mask = (dists > 0.1) & (dists < max_depth) & (msk_np < mask_threshold)
+        
+        clean_pts = pts_np[valid_mask]
+        all_pts.append(clean_pts)
+
+        if colors is not None:
+            col = colors[i]
+            if hasattr(col, 'cpu'): col = col.cpu()
+            col_np = col.reshape(-1, 3).numpy()[valid_mask]
+            all_cols.append((col_np * 255).clip(0, 255).astype(np.uint8))
+
+    if not all_pts:
+        print("⚠️  Warning: No background points found after masking.")
+        return
+
+    all_pts = np.concatenate(all_pts, axis=0)
+
+    # 4. Voxel Grid Deduplication (The "Stitching")
+    # This collapses redundant observations into a clean surface
+    voxel_indices = np.floor(all_pts / voxel_size).astype(np.int32)
+    offset = 1000  
+    keys = ((voxel_indices[:, 0] + offset).astype(np.int64) * 100_000_000 +
+            (voxel_indices[:, 1] + offset).astype(np.int64) * 10_000 +
+            (voxel_indices[:, 2] + offset).astype(np.int64))
+
+    _, unique_indices = np.unique(keys, return_index=True)
+    pts_deduped = all_pts[unique_indices]
+
+    has_color = len(all_cols) > 0
+    if has_color:
+        all_cols = np.concatenate(all_cols, axis=0)
+        cols_deduped = all_cols[unique_indices]
+
+    # 5. Write PLY
+    with open(output_path, 'w') as f:
+        f.write("ply\nformat ascii 1.0\n")
+        f.write(f"element vertex {len(pts_deduped)}\n")
+        f.write("property float x\nproperty float y\nproperty float z\n")
+        if has_color:
+            f.write("property uchar red\nproperty uchar green\nproperty uchar blue\n")
+        f.write("end_header\n")
+
+        if has_color:
+            for p, c in zip(pts_deduped, cols_deduped):
+                f.write(f"{p[0]:.4f} {p[1]:.4f} {p[2]:.4f} {c[0]} {c[1]} {c[2]}\n")
+        else:
+            for p in pts_deduped:
+                f.write(f"{p[0]:.4f} {p[1]:.4f} {p[2]:.4f}\n")
+
+    print(f"✅ Clean Scene PLY saved: {output_path} ({len(pts_deduped):,} points)")
+
+
+def export_for_dashboard(output_dir, cam_dict, smpl_params, smpl_ids,
+                          all_smpl_verts, pts3ds_other, msks, colors=None):
+    """
+    Main export controller for the React/Three.js dashboard.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # 1. Data Integrity Check
+    assert len(all_smpl_verts) == len(cam_dict['R']), "Timeline desync detected."
+
+    # 2. Global Scene Reconstruction (CLEANED)
+    # We use a 5cm voxel size and a 0.2 mask threshold for the 'Proper Scene' look
+    save_fused_scene_ply(
+        pts3ds_other, 
+        msks, 
+        colors, 
+        os.path.join(output_dir, "scene.ply"),
+        stride=5,         # Higher stride = faster fusion
+        voxel_size=0.05,  # 5cm grid balances fidelity and file size
+        max_depth=12.0,   # Increase if the room is large
+        mask_threshold=0.2 # Strict masking to remove humans entirely
+    )
+
+    # 3. Build JSON Manifest
+    manifest = {
+        "metadata": {
+            "total_frames": len(all_smpl_verts),
+            "up_axis": "Y",
+            "exporter": "Human3R_Dashboard_v1"
+        },
+        "camera_trajectory": [],
+        "frames": []
+    }
+
+    # Export Camera Path
+    for i in range(len(cam_dict['R'])):
+        manifest["camera_trajectory"].append({
+            "R": cam_dict['R'][i].tolist(),
+            "t": cam_dict['t'][i].tolist()
+        })
+
+    # Export Per-Frame Human Data
+    for f_id in range(len(all_smpl_verts)):
+        frame_data = {"frame_id": f_id, "humans": []}
+        current_frame_verts = all_smpl_verts[f_id]
+
+        if current_frame_verts.numel() == 0:
+            manifest["frames"].append(frame_data)
+            continue
+
+        for h_idx in range(len(smpl_ids[f_id])):
+            # Pelvis (0) for World Position, Head (4840) for Gaze
+            world_pos  = current_frame_verts[h_idx][0].tolist()
+            head_world = current_frame_verts[h_idx][4840].tolist()
+
+            human = {
+                "id": int(smpl_ids[f_id][h_idx]),
+                "world_pos": world_pos,
+                "head_world": head_world,
+                "pose": smpl_params["rotvecs"][f_id][h_idx].cpu().tolist(),
+                "shape": smpl_params["shapes"][f_id][h_idx].cpu().tolist(),
+            }
+            frame_data["humans"].append(human)
+
+        manifest["frames"].append(frame_data)
+
+    # Final Write
+    json_path = os.path.join(output_dir, "dashboard_data.json")
+    with open(json_path, "w") as f:
+        json.dump(manifest, f)
+        
+    print(f"🚀 DASHBOARD EXPORT SUCCESSFUL → {output_dir}")
+
+def save_point_cloud_as_ply(points, path, colors=None):
+    if hasattr(points, 'cpu'):
+        points = points.cpu()
+    pts = points.reshape(-1, 3).numpy()
+
+    # downsample: every 8th point keeps file small (~18k pts from a 512×288 frame)
+    pts = pts[::8]
+
+    # remove outliers beyond 20m (common noise in background)
+    dists = np.linalg.norm(pts, axis=1)
+    mask = dists < 20.0
+    pts = pts[mask]
+
+    has_color = colors is not None
+    if has_color:
+        if hasattr(colors, 'cpu'):
+            colors = colors.cpu()
+        cols = colors.reshape(-1, 3).numpy()[::8][mask]
+        cols = (cols * 255).clip(0, 255).astype(np.uint8)
+
+    with open(path, 'w') as f:
+        f.write("ply\nformat ascii 1.0\n")
+        f.write(f"element vertex {len(pts)}\n")
+        f.write("property float x\nproperty float y\nproperty float z\n")
+        if has_color:
+            f.write("property uchar red\nproperty uchar green\nproperty uchar blue\n")
+        f.write("end_header\n")
+        for i, p in enumerate(pts):
+            line = f"{p[0]:.4f} {p[1]:.4f} {p[2]:.4f}"
+            if has_color:
+                c = cols[i]
+                line += f" {c[0]} {c[1]} {c[2]}"
+            f.write(line + "\n")
+
+    print(f"   Scene PLY: {path} ({len(pts)} points, color={'yes' if has_color else 'no'})")
+
+def save_fused_scene_automated(pts_list, conf_list, mask_list, color_list, output_path, 
+                               stride=5, conf_thresh=1.2, voxel_size=0.02):
+    """
+    Automated version of the Viser-style reconstructor.
+    Uses tensors directly from the inference pipeline.
+    """
+    import numpy as np
+    import torch
+
+    print(f"🏗️  Automating scene reconstruction (Stride={stride}, Voxel={voxel_size}m)...")
+    
+    all_fused_pts = []
+    all_fused_cols = []
+
+    # Loop through the results with the specified stride
+    for i in range(0, len(pts_list), stride):
+        # 1. Prepare Tensors (Move to CPU and flatten)
+        pts = pts_list[i].reshape(-1, 3).cpu().numpy()
+        conf = conf_list[i].flatten().cpu().numpy()
+        
+        # Human mask is [1, H, W] -> flatten to [H*W]
+        msk = mask_list[i].flatten().cpu().numpy()
+        
+        # 2. Apply Viser Filtering Logic
+        # (High confidence AND not human AND valid depth)
+        valid_mask = (conf > conf_thresh) & (msk < 0.5) & (pts[:, 2] < 12.0)
+        
+        clean_pts = pts[valid_mask]
+        all_fused_pts.append(clean_pts)
+
+        if color_list is not None:
+            # Colors are usually [1, 3, H, W] or [H, W, 3]
+            # Based on prepare_output, they are likely [H, W, 3]
+            cols = color_list[i].reshape(-1, 3).cpu().numpy()
+            all_fused_cols.append((cols[valid_mask] * 255).astype(np.uint8))
+
+    if not all_fused_pts:
+        print("⚠️  Warning: No points survived the confidence/mask filter.")
+        return
+
+    # 3. Stitch and Voxel-Deduplicate
+    p_all = np.concatenate(all_fused_pts, axis=0)
+    c_all = np.concatenate(all_fused_cols, axis=0) if all_fused_cols else None
+
+    # Efficient Voxelization
+    voxel_indices = np.floor(p_all / voxel_size).astype(np.int32)
+    # Using a 1D hash for fast uniqueness check
+    keys = (voxel_indices[:, 0].astype(np.int64) * 100_000_000 +
+            voxel_indices[:, 1].astype(np.int64) * 10_000 +
+            voxel_indices[:, 2].astype(np.int64))
+
+    _, unique_idx = np.unique(keys, return_index=True)
+    p_final = p_all[unique_idx]
+    c_final = c_all[unique_idx] if c_all is not None else None
+
+    # 4. Write the PLY file
+    with open(output_path, 'w') as f:
+        f.write(f"ply\nformat ascii 1.0\nelement vertex {len(p_final)}\n")
+        f.write("property float x\nproperty float y\nproperty float z\n")
+        if c_final is not None:
+            f.write("property uchar red\nproperty uchar green\nproperty uchar blue\n")
+        f.write("end_header\n")
+        
+        for i in range(len(p_final)):
+            p, c = p_final[i], c_final[i]
+            line = f"{p[0]:.4f} {p[1]:.4f} {p[2]:.4f}"
+            if c_final is not None:
+                line += f" {c[0]} {c[1]} {c[2]}"
+            f.write(line + "\n")
+
+    print(f"✅ Automated Scene Reconstructed: {output_path} ({len(p_final):,} points)")
 
 
 def run_inference(args):
@@ -639,10 +953,35 @@ def run_inference(args):
         smpl_faces,
         smpl_id,
         msks,
+        smpl_params,
         ) = prepare_output(
         outputs, args.output_dir, 1, True, 
         args.save, args.render, args.render_video, img_res, args.subsample
     )
+
+    scene_ply_path = os.path.join(args.output_dir, "final_proper_scene.ply")
+    save_fused_scene_automated(
+        pts3ds_other, 
+        conf, 
+        msks, 
+        colors, 
+        scene_ply_path,
+        stride=5,         # Keep every 5th frame for the stitch
+        conf_thresh=1.2,  # Viser-quality threshold
+        voxel_size=0.02   # 2cm grid for high fidelity
+    )
+
+    export_for_dashboard(
+    args.output_dir,
+    cam_dict,
+    smpl_params,
+    smpl_id,
+    all_smpl_verts,
+    pts3ds_other,
+    msks,
+    colors=colors      # add this — gives you RGB in the PLY
+    )
+
 
     # Convert tensors to numpy arrays for visualization.
     pts3ds_to_vis = [p.cpu().numpy() for p in pts3ds_other]
@@ -674,7 +1013,16 @@ def run_inference(args):
         smpl_downsample_factor=args.smpl_downsample,
         camera_downsample_factor=args.camera_downsample
     )
+
+    # Wrap this at the bottom of demo.py
+    if not args.no_vis:
+        print("Launching Human3R viewer...")
+        viewer = SceneHumanViewer(...)
+        viewer.run()
+    else:
+        print("Skipping viewer launch as --no_vis is set.")
     viewer.run()
+
 
 
 def main():
