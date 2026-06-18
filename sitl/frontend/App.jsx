@@ -376,6 +376,70 @@ function HistoryPanel({ history, onLoad, onRemove }) {
   );
 }
 
+// ── Disk cases — always-visible list of processed jobs (from GET /dev/jobs) ─────
+
+function fmtSize(bytes) {
+  if (!bytes) return '';
+  const mb = bytes / 1048576;
+  return mb >= 1 ? `${mb.toFixed(0)} MB` : `${(bytes / 1024).toFixed(0)} KB`;
+}
+function fmtAge(mtime) {
+  if (!mtime) return '';
+  return new Date(mtime * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function DiskCasesPanel({ jobs, onLoad, onRefresh, currentJobId }) {
+  return (
+    <div style={{
+      flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
+      borderBottom: `1px solid ${C.border}`,
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 16px 6px',
+      }}>
+        <div style={LABEL}>Processed Cases · {jobs.length}</div>
+        <button onClick={onRefresh} title="Rescan outputs/" style={{
+          background: 'none', border: 'none', color: C.textMuted,
+          cursor: 'pointer', fontSize: 11, padding: 0,
+        }}>⟳</button>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 16px 10px' }}>
+        {jobs.length === 0 && (
+          <div style={{ fontSize: 10, color: C.textFaint, fontFamily: C.mono, padding: '6px 0' }}>
+            No completed cases on disk.
+          </div>
+        )}
+        {jobs.map(j => {
+          const active = j.job_id === currentJobId;
+          return (
+            <div key={j.job_id} onClick={() => onLoad(j.job_id)} style={{
+              cursor: 'pointer', padding: '6px 8px', marginBottom: 4, borderRadius: 5,
+              background: active ? 'rgba(59,130,246,0.10)' : 'transparent',
+              border: `1px solid ${active ? '#3b82f6' : C.border}`,
+              transition: 'border-color .12s, background .12s',
+            }}>
+              <div style={{
+                fontFamily: C.mono, fontSize: 11,
+                color: active ? '#60a5fa' : C.textPrimary,
+              }}>{j.job_id}</div>
+              <div style={{
+                fontSize: 9, color: C.textMuted, marginTop: 2, fontFamily: C.mono,
+                display: 'flex', gap: 8,
+              }}>
+                <span>{j.frames != null ? `${j.frames} fr` : '— fr'}</span>
+                <span>{fmtSize(j.ply_size)}</span>
+                {j.has_heatmap && <span style={{ color: C.textFaint }}>heatmap</span>}
+                <span style={{ marginLeft: 'auto', color: C.textFaint }}>{fmtAge(j.mtime)}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Root App ───────────────────────────────────────────────────────────────────
 
 function App() {
@@ -387,10 +451,24 @@ function App() {
   const [subsample, setSubsample] = useState(2);
   const [error,     setError]     = useState(null);
   const [jobId,     setJobId]     = useState(null);
-  const [devJobId,  setDevJobId]  = useState('0610cb8c');
-  const [history,   setHistory]   = useState(getHistory);
+  const [devJobId,        setDevJobId]        = useState('06c9ccd8');
+  const [history,         setHistory]         = useState(getHistory);
+  const [analyticsRunning, setAnalyticsRunning] = useState(false);
+  const [diskJobs,        setDiskJobs]        = useState([]);
 
   const isProcessing = phase === 'uploading' || phase === 'processing';
+
+  // ── Always-visible list of processed cases on disk ──────────────────────────
+  const refreshDiskJobs = useCallback(async () => {
+    try {
+      const res = await fetch('/dev/jobs');
+      if (!res.ok) return;
+      const data = await res.json();
+      setDiskJobs(data.jobs || []);
+    } catch (_) { /* non-fatal */ }
+  }, []);
+
+  useEffect(() => { refreshDiskJobs(); }, [refreshDiskJobs]);
 
   // ── Core job loader ────────────────────────────────────────────────────────
   const loadJobById = useCallback(async (id) => {
@@ -453,6 +531,7 @@ function App() {
           setPhase('completed');
           window.location.hash = '#' + job_id;
           setHistory(saveHistory({ id: job_id, filename: file.name, ts: Date.now() }));
+          refreshDiskJobs();
           fetch(`/results/${job_id}`)
             .then(r => r.json())
             .then(setResults)
@@ -482,8 +561,9 @@ function App() {
     const h = getHistory().filter(e => e.id !== jobId);
     localStorage.setItem(HISTORY_KEY, JSON.stringify(h));
     setHistory(h);
+    refreshDiskJobs();
     reset();
-  }, [jobId]);
+  }, [jobId, refreshDiskJobs]);
 
   const reset = () => {
     setPhase('idle'); setJobId(null); setStage(0);
@@ -496,6 +576,50 @@ function App() {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(h));
     setHistory(h);
   }, []);
+
+  const rerunAnalytics = useCallback(async () => {
+    if (!jobId || analyticsRunning) return;
+    setAnalyticsRunning(true);
+    setError(null);
+    try {
+      const res = await fetch(`/rerun-analytics/${jobId}`, { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || `HTTP ${res.status}`);
+      }
+      const sse = new EventSource(`/status/${jobId}`);
+      sse.onmessage = e => {
+        const state = JSON.parse(e.data);
+        if (Array.isArray(state.logs)) setLogs(state.logs.slice(-100));
+        if (state.status === 'completed') {
+          sse.close();
+          fetch(`/results/${jobId}`)
+            .then(r => r.json())
+            .then(data => {
+              data.json_url = data.json_url + '?t=' + Date.now();
+              setResults(data);
+              setAnalyticsRunning(false);
+            })
+            .catch(err => {
+              setError('Could not fetch updated results: ' + err.message);
+              setAnalyticsRunning(false);
+            });
+        } else if (state.status === 'failed') {
+          sse.close();
+          setError('Analytics re-run failed — see logs.');
+          setAnalyticsRunning(false);
+        }
+      };
+      sse.onerror = () => {
+        sse.close();
+        setError('Lost connection during analytics re-run.');
+        setAnalyticsRunning(false);
+      };
+    } catch (err) {
+      setError(err.message);
+      setAnalyticsRunning(false);
+    }
+  }, [jobId, analyticsRunning]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -565,6 +689,24 @@ function App() {
                 )}
               </div>
             )}
+            {phase === 'completed' && jobId && (
+              <button
+                onClick={rerunAnalytics}
+                disabled={analyticsRunning}
+                title="Re-run spatial analytics on existing inference outputs"
+                style={{
+                  width: '100%', marginTop: 6, padding: '7px 0',
+                  background: analyticsRunning ? C.surface : C.amberDim,
+                  border: `1px solid ${analyticsRunning ? C.border : C.amber}`,
+                  color: analyticsRunning ? C.textMuted : C.amber,
+                  borderRadius: 5, fontSize: 11, fontFamily: C.mono,
+                  cursor: analyticsRunning ? 'not-allowed' : 'pointer',
+                  transition: 'all .15s',
+                }}
+              >
+                {analyticsRunning ? '⟳  Running analytics…' : '⟳  Re-run Analytics'}
+              </button>
+            )}
 
             {phase === 'idle' && (
               <div style={{ marginTop: 10 }}>
@@ -621,6 +763,14 @@ function App() {
         {phase === 'idle' && (
           <HistoryPanel history={history} onLoad={loadJobById} onRemove={removeFromHistory} />
         )}
+
+        {/* Processed cases on disk — always visible, fills remaining space */}
+        <DiskCasesPanel
+          jobs={diskJobs}
+          onLoad={loadJobById}
+          onRefresh={refreshDiskJobs}
+          currentJobId={jobId}
+        />
 
         {/* Pipeline stages */}
         {phase !== 'idle' && (

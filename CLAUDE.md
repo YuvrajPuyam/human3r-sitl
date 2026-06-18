@@ -137,7 +137,7 @@ uvicorn backend.main:app --reload --port 8000
 Inference takes ~4 minutes. Never re-run it just to test UI changes.
 Use the **Dev — Load Existing Job** panel in the sidebar (visible when idle): enter a job ID and click Load. The viewer opens in ~1 second with no pipeline run.
 
-Current working job_id with verified outputs on disk: **0610cb8c**
+Current working job_id with verified outputs on disk: **06c9ccd8**
 
 Under the hood it hits `GET /dev/load/{job_id}`, which registers the existing
 `outputs/{job_id}/` directory as a completed job in memory.
@@ -475,7 +475,7 @@ const m = new THREE.Mesh(...); m.position.copy(pos);
 - **enriched_data.json bloat fixed**: `verts` and `joints` are no longer written into enriched_data.json (was 440 MB+, unparseable by browser). Analytics file is now ~3-5 MB. Viewer.jsx fetches dashboard_data.json in parallel and merges verts/joints client-side.
 
 ### What requires a new inference run
-The existing `0610cb8c` outputs were produced with engine v1 (ASCII PLY, no `verts`/`joints`/`smpl_faces`, broken human masking).
+The existing `06c9ccd8` outputs were produced with engine v1 (ASCII PLY, no `verts`/`joints`/`smpl_faces`, broken human masking).
 Run a new inference to get:
 - Binary PLY with correct human holes (scene only, no human geometry)
 - Full SMPL-X mesh rendering in viewer
@@ -484,7 +484,7 @@ Run a new inference to get:
 ### What to do first in a new session
 1. `conda activate human3r128`
 2. `cd sitl && uvicorn backend.main:app --reload --port 8000`
-3. Open http://localhost:8000/app, enter job ID `0610cb8c` in Dev panel, click Load
+3. Open http://localhost:8000/app, enter job ID `06c9ccd8` in Dev panel, click Load
 4. Verify viewer renders before making any changes
 
 ---

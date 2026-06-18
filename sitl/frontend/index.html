@@ -37,8 +37,13 @@
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 
-  <!-- Babel standalone — transforms type="text/babel" scripts in DOM order -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Babel standalone — transforms type="text/babel" scripts in DOM order.
+       Pinned to v7: Babel 8 defaults @babel/preset-react to the automatic JSX
+       runtime, which injects `import {jsx} from "react/jsx-runtime"` into the
+       output. Run as a plain script that throws "Cannot use import statement
+       outside a module" and blanks the page. v7 defaults to the classic
+       React.createElement runtime — no imports emitted. -->
+  <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
 </head>
 <body>
   <div id="root"></div>
@@ -47,7 +52,7 @@
     Load order: Viewer.jsx first so window.Viewer is defined before App.jsx runs.
     Babel processes these sequentially, so execution order is guaranteed.
   -->
-  <script type="text/babel" src="/frontend/Viewer.jsx?v=13"></script>
-  <script type="text/babel" src="/frontend/App.jsx?v=7"></script>
+  <script type="text/babel" src="/frontend/Viewer.jsx?v=20"></script>
+  <script type="text/babel" src="/frontend/App.jsx?v=10"></script>
 </body>
 </html>

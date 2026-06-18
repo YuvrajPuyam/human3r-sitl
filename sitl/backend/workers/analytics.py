@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 import logging
 import numpy as np
 from collections import Counter
@@ -190,9 +191,11 @@ def _proxemics_zone(dist: float) -> str:
 
 # ── Bird's-eye floor heatmap ──────────────────────────────────────────────────
 
+# Mirror of Viewer.jsx PALETTE_HEX so bird's-eye trajectory colours match the
+# per-subject colours in the 3D viewer (vivid, non-Claude cool palette).
 _PERSON_COLORS = [
-    '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
-    '#1abc9c', '#e67e22', '#0ea5e9', '#d946ef', '#84cc16',
+    '#3b82f6', '#ec4899', '#22c55e', '#8b5cf6', '#06b6d4',
+    '#f43f5e', '#eab308', '#d946ef', '#14b8a6', '#818cf8',
 ]
 
 
@@ -290,9 +293,116 @@ def _compute_floor_heatmap(enriched_frames: list, output_path: str,
     }
 
 
+# ── Track stitching ───────────────────────────────────────────────────────────
+
+def _stitch_tracks(frames: list, max_gap: int = 10, thresh: float = 0.6) -> int:
+    """Greedily merge fragmented person tracks in place.
+
+    Monocular tracking drops IDs across occlusions/blinks, so one physical person
+    may carry several IDs over a clip — which silently corrupts every per-person
+    metric (speed, action, trajectory). For each ID we take its first/last frame
+    and position; a later segment B is merged into an earlier A when B starts
+    within `max_gap` frames of A ending and B's start position is within `thresh`
+    metres of A's velocity-extrapolated end position (and they never co-occur).
+
+    Returns the number of merges applied. Mutates humans["id"] in `frames`.
+    """
+    # Build per-id segments: frame indices + positions in appearance order.
+    seg: dict[int, list[tuple[int, np.ndarray]]] = {}
+    for fi, frame in enumerate(frames):
+        for h in frame.get("humans", []):
+            seg.setdefault(h["id"], []).append((fi, np.asarray(h["world_pos"], float)))
+
+    ids = sorted(seg)
+    frame_sets = {i: {fi for fi, _ in seg[i]} for i in ids}
+    remap: dict[int, int] = {}
+
+    def resolve(i):
+        while i in remap:
+            i = remap[i]
+        return i
+
+    merges = 0
+    for b in ids:                       # candidate "later" track
+        bf = seg[b]
+        b_start_fi, b_start_pos = bf[0]
+        best, best_d = None, thresh
+        for a in ids:
+            if a == b:
+                continue
+            ar = resolve(a)
+            if ar == b:
+                continue
+            af = seg[a]
+            a_end_fi, a_end_pos = af[-1]
+            gap = b_start_fi - a_end_fi
+            if gap < 1 or gap > max_gap:
+                continue
+            if frame_sets[ar] & frame_sets[b]:      # they co-exist → different people
+                continue
+            vel = (af[-1][1] - af[max(0, len(af) - 4)][1]) / max(1, min(3, len(af) - 1))
+            pred = a_end_pos + vel * gap
+            d = float(np.linalg.norm(pred - b_start_pos))
+            if d < best_d:
+                best, best_d = ar, d
+        if best is not None:
+            remap[b] = best
+            frame_sets[best] |= frame_sets[b]
+            merges += 1
+
+    if merges:
+        for frame in frames:
+            for h in frame.get("humans", []):
+                h["id"] = resolve(h["id"])
+    return merges
+
+
+# ── Group / F-formation detection (union-find) ────────────────────────────────
+
+def _connected_components(n: int, edges: list[tuple[int, int]]) -> list[int]:
+    """Return a component label per node index given undirected edges."""
+    parent = list(range(n))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for a, b in edges:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
+    return [find(i) for i in range(n)]
+
+
 # ── Main analytics function ───────────────────────────────────────────────────
 
-async def compute_spatial_analytics(job_id: str):
+DEFAULT_PARAMS = {
+    "intimate_zone":     0.45,   # Hall (1966)
+    "personal_zone":     1.20,
+    "social_zone":       3.70,
+    "contact_thresh":    0.70,   # interaction "contact" vs "proximity"
+    "gaze_thresh":       1.00,   # ray closest-approach for mutual gaze (m)
+    "stitch_max_gap":    10,     # processed frames
+    "stitch_thresh":     0.60,   # m
+    "group_edge_dist":   2.00,   # m — max spacing for an F-formation edge
+    "group_edge_orient": 0.35,   # min orientation score (1 = facing each other)
+    "move_speed_mps":    0.20,   # above this a subject counts as "moving"
+    "max_jump_mps":      12.00,  # sprint cap; faster = tracking blip
+    "fps_override":      None,   # force effective fps (else read from metadata)
+}
+
+
+async def compute_spatial_analytics(job_id: str, params: dict | None = None):
+    """Async entry point — runs the heavy compute in a worker thread so the
+    FastAPI event loop (and the SSE status stream) stays responsive."""
+    return await asyncio.to_thread(_compute_spatial_analytics_sync, job_id, params or {})
+
+
+def _compute_spatial_analytics_sync(job_id: str, params: dict):
+    P = {**DEFAULT_PARAMS, **(params or {})}
+
     output_dir = f"outputs/{job_id}"
     data_path  = os.path.join(output_dir, "dashboard_data.json")
     ply_path   = os.path.join(output_dir, "scene.ply")
@@ -300,7 +410,16 @@ async def compute_spatial_analytics(job_id: str):
     with open(data_path) as f:
         data = json.load(f)
 
-    frames = data["frames"]
+    frames    = data["frames"]
+    meta_in   = data.get("metadata", {})
+    # Effective frame rate (processed frames/sec) → converts displacement to m/s.
+    eff_fps   = P["fps_override"] or float(meta_in.get("effective_fps") or 30.0)
+    eff_fps   = eff_fps if eff_fps > 1e-6 else 30.0
+
+    # ── Track stitching: repair fragmented person IDs before any metric ────────
+    n_merges = _stitch_tracks(frames, P["stitch_max_gap"], P["stitch_thresh"])
+    if n_merges:
+        log.info("Track stitching merged %d fragmented track(s)", n_merges)
 
     scene_pts  = None
     scene_tree = None
@@ -309,10 +428,13 @@ async def compute_spatial_analytics(job_id: str):
         if len(scene_pts) > 0:
             scene_tree = KDTree(scene_pts)
 
+    # SMPL-X ankle joints (Y-DOWN, same frame as scene.ply) for ground contact.
+    L_ANKLE, R_ANKLE = 7, 8
+
     VOXEL = 0.5
     all_pair_dists          = []
-    social_frames           = 0       # pairs within Hall's personal zone (< 1.2 m)
-    personal_space_frames   = 0       # pairs within Hall's intimate zone (< 0.45 m)
+    social_frames           = 0       # pairs within Hall's personal zone
+    personal_space_frames   = 0       # pairs within Hall's intimate zone
     gaze_convergence_events = 0
     approach_events         = 0
     occupied_voxels         = set()
@@ -320,14 +442,20 @@ async def compute_spatial_analytics(job_id: str):
 
     prev_positions    = {}
     prev_frame_seen   = {}            # h_id → last frame index where person was seen
-    speed_samples     = []
-    pair_dist_hist    = {}            # pk → [last_dist]
+    speed_samples     = []            # m/s
+    pair_dist_win     = {}            # pk → recent distances (smoothing window)
     pair_states       = {}            # pk → "approaching"|"stable"|"retreating"
-    # Max plausible pelvis speed per frame (0.35 m/frame ≈ 10.5 m/s at 30 fps = sprinting)
-    # Exceeding this is a tracking blip (person disappeared and reappeared far away).
-    _MAX_SPEED = 0.35
+    pair_close        = {}            # pk → bool, currently within personal zone
 
-    # Maps person_id → list of (ef_idx, human_idx, joints_127, speed, pose_53)
+    # Dyad accumulators (per unordered pair)
+    dyads: dict[tuple, dict] = {}
+    # Per-person trajectory accumulators
+    subj: dict[int, dict] = {}
+    events: list[dict] = []
+    prev_num_groups = 0
+    global_min = {"dist": float("inf"), "frame": -1, "pair": None}
+
+    # Maps person_id → list of (ef_idx, human_idx, joints, speed_mps, pose_53)
     person_seq_data: dict[int, list[tuple[int, int, list, float, list]]] = {}
     enriched_frames = []
 
@@ -340,66 +468,76 @@ async def compute_spatial_analytics(job_id: str):
         ef["humans"]       = [{k: v for k, v in h.items()
                                if k not in ("verts", "joints")} for h in humans]
         ef["interactions"] = []
+        ef["groups"]       = []
         ef_idx = len(enriched_frames)
 
         if n == 0:
             enriched_frames.append(ef)
+            prev_num_groups = 0
             continue
 
-        positions = np.array([h["world_pos"]  for h in humans], dtype=np.float64)
-        heads     = np.array([h["head_world"] for h in humans], dtype=np.float64)
+        positions = np.array([h["world_pos"] for h in humans], dtype=np.float64)
 
         # ── a) Gaze / facing directions ───────────────────────────────────────
         gaze_vecs = np.zeros((n, 3))
         for i in range(n):
             gaze_vecs[i] = _compute_gaze_direction(
-                humans[i]["head_world"],
-                humans[i]["world_pos"],
-                humans[i].get("joints"),
-            )
+                humans[i]["head_world"], humans[i]["world_pos"], humans[i].get("joints"))
 
-        # ── b) Per-person: contact score, speed, scene voxel, action ─────────
-        frame_idx = len(enriched_frames)   # index of the frame being processed
-
+        # ── b) Per-person: contact score, speed, scene voxel ──────────────────
         for i in range(n):
+            h_id   = humans[i]["id"]
+            joints = humans[i].get("joints")
+
+            # Ground contact from real ankle joints (Y-DOWN, matches scene.ply).
             contact_score = 0.0
             if scene_tree is not None:
-                # Query from foot position (Y-DOWN: foot is below pelvis → +Y offset)
-                foot = positions[i].copy()
-                foot[1] += 0.95        # Y-DOWN: +Y = downward = toward floor
-                dists, _ = scene_tree.query(np.stack([foot, positions[i]]))
-                contact_score = float(np.max(np.exp(-(dists ** 2))))
+                query_pts = None
+                if joints and len(joints) > R_ANKLE:
+                    query_pts = np.array([joints[L_ANKLE], joints[R_ANKLE]], float)
+                else:
+                    # Fallback: pelvis vertex is Y-UP — flip Y to match Y-DOWN cloud.
+                    p = positions[i].copy(); p[1] = -p[1] + 0.9
+                    query_pts = p[None, :]
+                dists, _ = scene_tree.query(query_pts)
+                contact_score = float(np.max(np.exp(-(np.atleast_1d(dists) ** 2))))
 
-            h_id  = humans[i]["id"]
-            speed = 0.0
-            # Only compute speed if person was seen in the IMMEDIATELY preceding frame
-            # (avoids large jumps when a person disappears and reappears)
+            # Speed in m/s (displacement × effective fps), only across consecutive frames.
+            speed_mps = 0.0
             if (h_id in prev_positions
-                    and prev_frame_seen.get(h_id, -1) == frame_idx - 1):
-                raw_speed = float(np.linalg.norm(positions[i] - prev_positions[h_id]))
-                if raw_speed <= _MAX_SPEED:
-                    speed = raw_speed
-                    speed_samples.append(speed)
-                # else: blip — treat as stationary this frame (speed stays 0)
+                    and prev_frame_seen.get(h_id, -1) == ef_idx - 1):
+                step = float(np.linalg.norm(positions[i] - prev_positions[h_id]))
+                cand = step * eff_fps
+                if cand <= P["max_jump_mps"]:
+                    speed_mps = cand
+                    speed_samples.append(speed_mps)
             prev_positions[h_id]  = positions[i].copy()
-            prev_frame_seen[h_id] = frame_idx
+            prev_frame_seen[h_id] = ef_idx
 
             ef["humans"][i]["gaze_vec"]      = gaze_vecs[i].tolist()
             ef["humans"][i]["contact_score"] = round(contact_score, 4)
-            ef["humans"][i]["speed"]         = round(speed, 4)
-            ef["humans"][i]["action"]        = 'stationary'   # placeholder; filled below
+            ef["humans"][i]["speed"]         = round(speed_mps, 4)   # m/s
+            ef["humans"][i]["action"]        = 'stationary'          # filled post-loop
 
-            vox = tuple((positions[i] / VOXEL).astype(int))
-            occupied_voxels.add(vox)
+            occupied_voxels.add(tuple((positions[i] / VOXEL).astype(int)))
 
-            # Collect joint + pose sequence for batch action classification after the loop
+            # Trajectory accumulation
+            s = subj.setdefault(h_id, {"frames": 0, "path": 0.0, "moving": 0,
+                                       "peak": 0.0, "xz": []})
+            s["frames"] += 1
+            s["xz"].append((float(positions[i][0]), float(positions[i][2])))
+            if speed_mps > 0:
+                s["path"]  += speed_mps / eff_fps           # back to metres for this step
+                s["peak"]   = max(s["peak"], speed_mps)
+                if speed_mps > P["move_speed_mps"]:
+                    s["moving"] += 1
+
             person_seq_data.setdefault(h_id, []).append(
-                (ef_idx, i, humans[i].get("joints", []), speed, humans[i].get("pose", []))
-            )
+                (ef_idx, i, joints or [], speed_mps, humans[i].get("pose", [])))
 
-        # ── c) Pairwise interaction metrics (Hall proxemics + gaze + dynamics) ─
-        any_personal  = False
-        any_intimate  = False
+        # ── c) Pairwise interactions (proxemics + gaze + dynamics) ────────────
+        any_personal = any_intimate = any_mutual_gaze = False
+        group_edges  = []
 
         for i in range(n):
             for j in range(i + 1, n):
@@ -412,65 +550,105 @@ async def compute_spatial_analytics(job_id: str):
                 if zone == "intimate":
                     any_intimate = True
 
-                # Approach / retreat state (per pair, from distance history)
-                pk    = (min(humans[i]["id"], humans[j]["id"]),
-                         max(humans[i]["id"], humans[j]["id"]))
-                hist  = pair_dist_hist.get(pk, [])
+                ida, idb = humans[i]["id"], humans[j]["id"]
+                pk = (min(ida, idb), max(ida, idb))
+
+                # Approach/retreat from a smoothed distance window (jitter-robust).
+                win = pair_dist_win.setdefault(pk, [])
+                win.append(dist)
+                if len(win) > 5:
+                    win.pop(0)
                 old_state = pair_states.get(pk, "stable")
-
                 new_state = "stable"
-                if hist:
-                    delta = dist - hist[-1]
-                    if delta < -0.03:
+                if len(win) >= 3:
+                    half = len(win) // 2
+                    delta = float(np.mean(win[half:]) - np.mean(win[:half]))
+                    if delta < -0.04:
                         new_state = "approaching"
-                    elif delta > 0.03:
+                    elif delta > 0.04:
                         new_state = "retreating"
-
-                # Count each new approach event (transition into approaching)
                 if old_state != "approaching" and new_state == "approaching":
                     approach_events += 1
+                pair_states[pk] = new_state
 
-                pair_dist_hist[pk] = [dist]
-                pair_states[pk]    = new_state
-
-                # Mutual gaze for this pair (per-frame)
                 mutual_gaze = bool(_pair_rays_converge(
-                    positions[i], gaze_vecs[i],
-                    positions[j], gaze_vecs[j],
-                    threshold=1.0,
-                ))
+                    positions[i], gaze_vecs[i], positions[j], gaze_vecs[j],
+                    threshold=P["gaze_thresh"]))
+                if mutual_gaze:
+                    any_mutual_gaze = True
 
-                # Social orientation: how much the two people face each other
-                # cos_angle = -1 → fully facing each other (opposite gaze dirs)
-                # orient_score: 1 = facing each other, 0 = facing same direction
-                cos_a = float(np.clip(gaze_vecs[i] @ gaze_vecs[j], -1.0, 1.0))
+                cos_a        = float(np.clip(gaze_vecs[i] @ gaze_vecs[j], -1.0, 1.0))
                 orient_score = round((1.0 - cos_a) / 2.0, 3)
                 facing_angle = round(float(np.degrees(np.arccos(abs(cos_a)))), 1)
-
-                # Combined social engagement score (distance + orientation)
-                dist_score   = max(0.0, 1.0 - dist / 3.7)    # 0 at public distance
+                dist_score   = max(0.0, 1.0 - dist / P["social_zone"])
                 social_score = round(dist_score * 0.55 + orient_score * 0.45, 3)
 
                 ef["interactions"].append({
-                    "source":        humans[i]["id"],
-                    "target":        humans[j]["id"],
-                    "distance":      round(dist, 3),
-                    "zone":          zone,
-                    "type":          "contact" if dist < 0.7 else "proximity",  # compat
-                    "mutual_gaze":   mutual_gaze,
-                    "approach_state": new_state,
-                    "facing_angle":  facing_angle,
-                    "social_score":  social_score,
+                    "source": ida, "target": idb,
+                    "distance": round(dist, 3), "zone": zone,
+                    "type": "contact" if dist < P["contact_thresh"] else "proximity",
+                    "mutual_gaze": mutual_gaze, "approach_state": new_state,
+                    "facing_angle": facing_angle, "social_score": social_score,
                 })
+
+                # F-formation edge: close enough and oriented toward each other.
+                if dist < P["group_edge_dist"] and orient_score >= P["group_edge_orient"]:
+                    group_edges.append((i, j))
+
+                # Dyad accumulation
+                dy = dyads.setdefault(pk, {
+                    "frames": 0, "min_dist": float("inf"), "sum_dist": 0.0,
+                    "mutual_gaze": 0, "approaches": 0,
+                    "zones": {"intimate": 0, "personal": 0, "social": 0, "public": 0},
+                })
+                dy["frames"]     += 1
+                dy["min_dist"]    = min(dy["min_dist"], dist)
+                dy["sum_dist"]   += dist
+                dy["zones"][zone] += 1
+                if mutual_gaze:
+                    dy["mutual_gaze"] += 1
+                if old_state != "approaching" and new_state == "approaching":
+                    dy["approaches"] += 1
+
+                # Meeting event: pair crosses into the personal zone.
+                was_close = pair_close.get(pk, False)
+                now_close = dist < P["personal_zone"]
+                if now_close and not was_close:
+                    events.append({"frame": ef_idx, "type": "meeting",
+                                   "subjects": [ida, idb], "distance": round(dist, 2)})
+                pair_close[pk] = now_close
+
+                if dist < global_min["dist"]:
+                    global_min.update({"dist": dist, "frame": ef_idx, "pair": [ida, idb]})
 
         if any_personal:
             social_frames += 1
         if any_intimate:
             personal_space_frames += 1
-
-        # Global gaze convergence (any pair in frame)
-        if n >= 2 and _rays_converge(positions, gaze_vecs, threshold=1.0):
+        if any_mutual_gaze:                       # dedup: reuse per-pair result
             gaze_convergence_events += 1
+
+        # ── d) Groups (connected components on F-formation edges) ─────────────
+        labels = _connected_components(n, group_edges)
+        comp_members: dict[int, list[int]] = {}
+        for idx, lab in enumerate(labels):
+            comp_members.setdefault(lab, []).append(idx)
+        gid = 0
+        for members in comp_members.values():
+            if len(members) >= 2:
+                ids_in = [humans[m]["id"] for m in members]
+                ef["groups"].append(ids_in)
+                for m in members:
+                    ef["humans"][m]["group"] = gid
+                gid += 1
+        for idx in range(n):
+            ef["humans"][idx].setdefault("group", -1)
+
+        num_groups = len(ef["groups"])
+        if num_groups > prev_num_groups:
+            events.append({"frame": ef_idx, "type": "group_form",
+                           "count": num_groups})
+        prev_num_groups = num_groups
 
         enriched_frames.append(ef)
 
@@ -478,7 +656,7 @@ async def compute_spatial_analytics(job_id: str):
     action_distributions: dict[int, dict[str, float]] = {}
     for h_id, entries in person_seq_data.items():
         joints_seq = [e[2] for e in entries]
-        speed_seq  = [e[3] for e in entries]
+        speed_seq  = [e[3] for e in entries]    # m/s
         pose_seq   = [e[4] for e in entries]
         try:
             smoothed = classify_person_sequence(joints_seq, speed_seq, pose_seq)
@@ -486,22 +664,68 @@ async def compute_spatial_analytics(job_id: str):
             log.warning('Action classification failed for person %s: %s', h_id, exc)
             smoothed = ['stationary'] * len(entries)
 
+        prev_act = None
         for idx, (ef_idx, hi, _, _, _) in enumerate(entries):
             action = smoothed[idx] if idx < len(smoothed) else 'stationary'
             enriched_frames[ef_idx]["humans"][hi]["action"] = action
+            # Sit event on transition into sitting.
+            if action == 'sitting' and prev_act != 'sitting':
+                events.append({"frame": ef_idx, "type": "sit", "subjects": [h_id]})
+            prev_act = action
 
         counts  = Counter(smoothed)
         total_p = len(smoothed) or 1
         action_distributions[h_id] = {
-            k: round(100.0 * v / total_p, 1) for k, v in counts.items()
+            k: round(100.0 * v / total_p, 1) for k, v in counts.items()}
+
+    # Closest-contact highlight event
+    if global_min["frame"] >= 0:
+        events.append({"frame": global_min["frame"], "type": "closest_contact",
+                       "subjects": global_min["pair"],
+                       "distance": round(global_min["dist"], 2)})
+    events.sort(key=lambda e: e["frame"])
+
+    # ── Per-person trajectory metrics (D) ─────────────────────────────────────
+    subjects = {}
+    for h_id, s in subj.items():
+        area = 0.0
+        pts = np.array(s["xz"]) if s["xz"] else np.empty((0, 2))
+        if len(pts) >= 3:
+            try:
+                from scipy.spatial import ConvexHull
+                area = round(float(ConvexHull(pts).volume), 3)   # 2D hull area
+            except Exception:
+                rng = pts.max(0) - pts.min(0)
+                area = round(float(rng[0] * rng[1]), 3)
+        subjects[h_id] = {
+            "frames_tracked": s["frames"],
+            "path_length_m":  round(s["path"], 3),
+            "pct_moving":     round(100.0 * s["moving"] / max(1, s["frames"]), 1),
+            "peak_speed_mps": round(s["peak"], 3),
+            "area_m2":        area,
         }
+
+    # ── Dyad report (B) ───────────────────────────────────────────────────────
+    dyad_list = []
+    for (a, b), dy in dyads.items():
+        fr = dy["frames"] or 1
+        dyad_list.append({
+            "pair":          [a, b],
+            "frames":        dy["frames"],
+            "closest_m":     round(dy["min_dist"], 3),
+            "avg_dist_m":    round(dy["sum_dist"] / fr, 3),
+            "pct_mutual_gaze": round(100.0 * dy["mutual_gaze"] / fr, 1),
+            "approaches":    dy["approaches"],
+            "zone_frames":   dy["zones"],
+        })
+    dyad_list.sort(key=lambda d: d["frames"], reverse=True)
 
     # ── Summary metrics ────────────────────────────────────────────────────────
     nf         = len(frames) or 1
     social_pct = round(100.0 * social_frames / nf, 1)
     avg_dist   = round(float(np.mean(all_pair_dists)), 3) if all_pair_dists else 0.0
     ps_pct     = round(100.0 * personal_space_frames / nf, 1)
-    avg_speed  = round(float(np.mean(speed_samples)), 4) if speed_samples else 0.0
+    avg_speed  = round(float(np.mean(speed_samples)), 3) if speed_samples else 0.0
 
     if scene_pts is not None and len(scene_pts) > 0:
         bbox         = scene_pts.max(0) - scene_pts.min(0)
@@ -516,17 +740,29 @@ async def compute_spatial_analytics(job_id: str):
         "scene_utilization_pct":    scene_util,
         "gaze_convergence_events":  gaze_convergence_events,
         "personal_space_pct":       ps_pct,
-        "avg_speed_mpf":            avg_speed,
+        "avg_speed_mps":            avg_speed,
         "approach_events":          approach_events,
         "peak_occupancy":           peak_occupancy,
         "action_distributions":     action_distributions,
+        # New analytics
+        "tracks_stitched":          n_merges,
+        "event_count":              len(events),
+        "group_count":              sum(1 for e in events if e["type"] == "group_form"),
+        "effective_fps":            round(eff_fps, 3),
+        "events":                   events,
+        "dyads":                    dyad_list,
+        "subjects":                 subjects,
     }
 
     # ── Bird's-eye heatmap ─────────────────────────────────────────────────────
     heatmap_path = os.path.join(output_dir, "heatmap.png")
     heatmap_meta = _compute_floor_heatmap(enriched_frames, heatmap_path)
 
-    metadata = {**data["metadata"], **summary}
+    # Keep heavy nested analytics out of metadata (it mirrors summary); only the
+    # scalar metrics + heatmap bounds belong there.
+    scalar_summary = {k: v for k, v in summary.items()
+                      if k not in ("events", "dyads", "subjects", "action_distributions")}
+    metadata = {**data["metadata"], **scalar_summary}
     if heatmap_meta:
         metadata["heatmap"] = heatmap_meta
 

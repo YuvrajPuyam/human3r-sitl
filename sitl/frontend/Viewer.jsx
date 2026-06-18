@@ -28,14 +28,16 @@ const V = {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+// Per-subject marker colours — vivid, well-separated, cool-leaning categorical set
+// (no amber/orange/terracotta, which read as "Claude" against the dark theme).
 const PALETTE = [
-  0xe74c3c, 0x3498db, 0x2ecc71, 0xf39c12, 0x9b59b6,
-  0x1abc9c, 0xe67e22, 0x0ea5e9, 0xd946ef, 0x84cc16,
+  0x3b82f6, 0xec4899, 0x22c55e, 0x8b5cf6, 0x06b6d4,
+  0xf43f5e, 0xeab308, 0xd946ef, 0x14b8a6, 0x818cf8,
 ];
 
 const PALETTE_HEX = [
-  '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
-  '#1abc9c', '#e67e22', '#0ea5e9', '#d946ef', '#84cc16',
+  '#3b82f6', '#ec4899', '#22c55e', '#8b5cf6', '#06b6d4',
+  '#f43f5e', '#eab308', '#d946ef', '#14b8a6', '#818cf8',
 ];
 
 const ACTION_COLORS = {
@@ -96,56 +98,70 @@ const METRIC_DEFS = {
     description: "Percentage of frames where at least one pair is within Hall's personal-distance zone (≤ 1.2 m), indicating active interpersonal interaction.",
     formula:     'frames_with_any_pair ≤ 1.2 m / total_frames × 100%',
     research:    'Hall (1966) proxemics — personal zone: 45–120 cm.',
-    accent:      '#16a34a',
+    accent:      '#34d399',
   },
   avg_inter_human_distance: {
     label:       'Avg Inter-Subject Distance',
     description: 'Mean 3D Euclidean distance between all detected subjects, averaged across all pairs and all frames.',
     formula:     'mean(‖pos_i − pos_j‖₂)  ∀ pairs (i,j), ∀ frames',
     research:    'Spatial cohesion proxy (Cristani et al., 2011; Hall, 1966).',
-    accent:      '#d97706',
+    accent:      '#3b82f6',
   },
   scene_utilization_pct: {
     label:       'Scene Utilization',
     description: 'Percentage of 0.5 m³ voxels inside the scene bounding box that were occupied by at least one subject at any point in the footage.',
     formula:     'occupied_0.5 m_voxels / total_scene_voxels × 100%',
     research:    'Measures spatial coverage and mobility range within the scene.',
-    accent:      '#a78bfa',
+    accent:      '#818cf8',
   },
   gaze_convergence_events: {
     label:       'Gaze Convergence Events',
     description: 'Number of frames where at least one pair of subjects have gaze rays whose closest-approach distance is < 1 m, suggesting mutual visual attention.',
     formula:     'min‖closest_approach(ray_i, ray_j)‖ < 1.0 m, counted per frame',
     research:    'Mutual gaze: key indicator of social attention (Kendon, 1967; Argyle & Cook, 1976).',
-    accent:      '#f59e0b',
+    accent:      '#ec4899',
   },
   personal_space_pct: {
     label:       'Intimate Zone Violations',
     description: "Percentage of frames where any pair of subjects is within Hall's intimate-distance zone (< 0.45 m), indicating very close physical proximity or contact.",
     formula:     'frames_with_any_pair < 0.45 m / total_frames × 100%',
     research:    'Hall (1966) intimate zone: 0–45 cm. Indicates physical contact or crowding.',
-    accent:      '#dc2626',
+    accent:      '#f43f5e',
   },
-  avg_speed_mpf: {
+  avg_speed_mps: {
     label:       'Average Movement Speed',
-    description: 'Mean movement speed of all tracked subjects, computed from frame-to-frame pelvis displacement.',
-    formula:     'mean(‖Δpelvis‖ per frame) × 30 fps  [m/s]',
+    description: 'Mean movement speed of all tracked subjects in metres per second, normalised by the clip\'s effective frame rate (fps ÷ subsample), so it is correct at any subsample.',
+    formula:     'mean(‖Δpelvis‖ × effective_fps)  [m/s]',
     research:    'Pelvis velocity is a standard locomotion proxy in SMPL-X-based tracking.',
-    accent:      '#06b6d4',
+    accent:      '#22d3ee',
   },
   approach_events: {
     label:       'Approach Events',
     description: 'Number of times any pair transitions into an approaching state (inter-subject distance derivative changes from positive or zero to negative).',
     formula:     'count of sign(Δdist) transitions: non-negative → negative, per pair',
     research:    'Approach–avoidance dynamics predict social engagement (Goffman, 1971).',
-    accent:      '#f97316',
+    accent:      '#14b8a6',
   },
   peak_occupancy: {
     label:       'Peak Occupancy',
     description: 'Maximum number of subjects simultaneously detected and tracked in any single video frame.',
     formula:     'max(|subjects_per_frame|) across all frames',
     research:    'Relevant for crowding analysis and group dynamics (Stokols, 1972).',
-    accent:      '#8b5cf6',
+    accent:      '#eab308',
+  },
+  group_count: {
+    label:       'Group Formations',
+    description: 'Number of times a new conversational group (F-formation) forms — subjects close enough and oriented toward each other to share an interaction space.',
+    formula:     'count of frames where #groups increases (connected components on the proximity+orientation graph)',
+    research:    "Kendon (1990) F-formation / o-space; Cristani et al. (2011).",
+    accent:      '#34d399',
+  },
+  event_count: {
+    label:       'Detected Events',
+    description: 'Total auto-detected highlights: meetings (pair enters personal zone), group formations, sitting transitions, and the single closest-contact moment.',
+    formula:     'Σ (meetings + group_forms + sits + closest_contact)',
+    research:    'Event segmentation of social interaction streams.',
+    accent:      '#818cf8',
   },
 };
 
@@ -243,79 +259,126 @@ function MetricModal({ def, value, onClose }) {
   );
 }
 
-// ── Rich stat pill ────────────────────────────────────────────────────────────
-
-function StatPill({ metricKey, value, onOpenModal }) {
-  const [hovered, setHovered] = useState(false);
-  const def    = METRIC_DEFS[metricKey] || {};
-  const accent = def.accent || V.amber;
-
-  return (
-    <div
-      style={{ position: 'relative', flexShrink: 0 }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <div
-        onClick={() => def.description && onOpenModal && onOpenModal(metricKey, value)}
-        style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          padding: '6px 14px',
-          background: hovered ? `rgba(${hexToRgb(accent)},0.08)` : 'rgba(13,11,9,0.55)',
-          border: `1px solid ${hovered ? accent + '55' : V.border}`,
-          borderRadius: 6,
-          cursor: def.description ? 'pointer' : 'default',
-          transition: 'background .15s, border-color .15s',
-          minWidth: 130,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={{
-            fontSize: 16, fontWeight: 700, color: accent,
-            lineHeight: 1.15, fontVariantNumeric: 'tabular-nums',
-            whiteSpace: 'nowrap', fontFamily: V.mono,
-          }}>{value}</span>
-          {def.description && (
-            <span style={{
-              fontSize: 10, color: hovered ? accent : V.textFaint,
-              transition: 'color .12s', lineHeight: 1,
-            }}>ⓘ</span>
-          )}
-        </div>
-        <div style={{
-          fontSize: 9, color: V.textMuted, textTransform: 'uppercase',
-          letterSpacing: '0.06em', marginTop: 2, whiteSpace: 'nowrap', fontFamily: V.mono,
-        }}>{def.label || metricKey}</div>
-      </div>
-
-      {/* Hover tooltip */}
-      {hovered && def.description && (
-        <div style={{
-          position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'rgba(13,11,9,0.97)', border: `1px solid ${V.border}`,
-          borderRadius: 6, padding: '7px 11px',
-          minWidth: 200, maxWidth: 280, zIndex: 200,
-          fontSize: 11, color: V.textSecond, lineHeight: 1.45,
-          whiteSpace: 'normal', pointerEvents: 'none',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.7)',
-        }}>
-          {def.description}
-          <div style={{ marginTop: 4, fontSize: 9, color: V.textMuted, fontFamily: V.mono }}>
-            Click for formula and references
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // small helper — convert hex to rgb triplet for rgba()
 function hexToRgb(hex) {
   const r = parseInt(hex.slice(1,3),16);
   const g = parseInt(hex.slice(3,5),16);
   const b = parseInt(hex.slice(5,7),16);
   return `${r},${g},${b}`;
+}
+
+// Desaturated tint of an accent — blends it toward a neutral grey so a value
+// reads as restrained data (hue-linked to its dot) rather than a vivid label.
+function mutedAccent(hex, t = 0.55) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  const GREY = 0xd4;  // zinc-300-ish neutral target
+  const mix = (c) => Math.round(c * (1 - t) + GREY * t);
+  return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+}
+
+// ── Analytics panel (floating, top-left) ──────────────────────────────────────
+// Replaces the old scrolling stat-pill strip at the bottom. Shows a few primary
+// metrics always; the rest expand inline (no horizontal scroll).
+
+const PRIMARY_METRICS   = ['social_engagement_pct', 'avg_inter_human_distance',
+                           'peak_occupancy', 'personal_space_pct'];
+const SECONDARY_METRICS = ['scene_utilization_pct', 'gaze_convergence_events',
+                           'avg_speed_mps', 'approach_events',
+                           'group_count', 'event_count'];
+
+function metricValue(key, summary) {
+  if (!summary) return '—';
+  switch (key) {
+    case 'social_engagement_pct':   return `${summary.social_engagement_pct ?? '—'}%`;
+    case 'avg_inter_human_distance':return `${summary.avg_inter_human_distance ?? '—'} m`;
+    case 'scene_utilization_pct':   return `${summary.scene_utilization_pct ?? '—'}%`;
+    case 'gaze_convergence_events': return `${summary.gaze_convergence_events ?? '—'}`;
+    case 'personal_space_pct':      return `${summary.personal_space_pct ?? '—'}%`;
+    case 'avg_speed_mps':           return summary.avg_speed_mps != null ? `${summary.avg_speed_mps} m/s` : '—';
+    case 'approach_events':         return `${summary.approach_events ?? '—'}`;
+    case 'peak_occupancy':          return `${summary.peak_occupancy ?? '—'}`;
+    case 'group_count':             return `${summary.group_count ?? '—'}`;
+    case 'event_count':             return `${summary.event_count ?? '—'}`;
+    default:                        return '—';
+  }
+}
+
+function MetricRow({ metricKey, value, onOpenModal }) {
+  const [hover, setHover] = useState(false);
+  const def    = METRIC_DEFS[metricKey] || {};
+  const accent = def.accent || V.amber;
+  return (
+    <div
+      onClick={() => def.description && onOpenModal && onOpenModal(metricKey, value)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px',
+        borderRadius: 5, cursor: def.description ? 'pointer' : 'default',
+        background: hover ? `rgba(${hexToRgb(accent)},0.10)` : 'transparent',
+        transition: 'background .12s',
+      }}
+    >
+      <span style={{
+        width: 7, height: 7, borderRadius: '50%', background: accent,
+        flexShrink: 0, boxShadow: `0 0 6px ${accent}99`,
+      }} />
+      <span style={{
+        flex: 1, fontSize: 10, color: hover ? V.textPrimary : V.textSecond,
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      }}>{def.label || metricKey}</span>
+      <span style={{
+        fontSize: 12, fontWeight: 700, color: mutedAccent(accent), fontFamily: V.mono,
+        fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+      }}>{value}</span>
+    </div>
+  );
+}
+
+function MetricsPanel({ summary, onOpenModal }) {
+  const [open, setOpen]         = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  if (!summary) return null;
+  return (
+    <div style={{
+      position: 'absolute', top: 12, left: 12, zIndex: 10, width: 210,
+      background: 'rgba(13,11,9,0.95)', border: `1px solid ${V.border}`,
+      borderRadius: 8, backdropFilter: 'blur(8px)',
+    }}>
+      <button onClick={() => setOpen(o => !o)} style={{
+        width: '100%', background: 'none', border: 'none',
+        padding: '7px 12px', cursor: 'pointer', display: 'flex',
+        justifyContent: 'space-between', fontSize: 9, color: V.textMuted,
+        letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: V.mono,
+      }}>
+        Analytics <span>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div style={{ padding: '0 8px 8px' }}>
+          {PRIMARY_METRICS.map(k => (
+            <MetricRow key={k} metricKey={k}
+              value={metricValue(k, summary)} onOpenModal={onOpenModal} />
+          ))}
+          {expanded && SECONDARY_METRICS.map(k => (
+            <MetricRow key={k} metricKey={k}
+              value={metricValue(k, summary)} onOpenModal={onOpenModal} />
+          ))}
+          <button onClick={() => setExpanded(e => !e)} style={{
+            width: '100%', marginTop: 4, padding: '5px 0', cursor: 'pointer',
+            background: 'transparent', border: `1px solid ${V.border}`,
+            borderRadius: 5, color: V.textMuted, fontSize: 9, fontFamily: V.mono,
+            letterSpacing: '0.08em', textTransform: 'uppercase',
+            transition: 'border-color .12s, color .12s',
+          }}>
+            {expanded ? '▴  Less' : `▾  ${SECONDARY_METRICS.length} more`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Layer / camera panel ──────────────────────────────────────────────────────
@@ -837,7 +900,10 @@ function Viewer({ plyUrl, jsonUrl }) {
     facesRef.current  = null;
     trailsRef.current = {};
 
-    const dashUrl = jsonUrl.replace('enriched_data.json', 'dashboard_data.json');
+    const base    = jsonUrl.replace('enriched_data.json', '');
+    const dashUrl = base + 'dashboard_data.json';
+    const vidxUrl = base + 'verts_index.json';
+    const vbinUrl = base + 'verts.bin';
 
     Promise.all([
       fetch(jsonUrl, { signal: sig }).then(r => {
@@ -845,8 +911,13 @@ function Viewer({ plyUrl, jsonUrl }) {
         return r.json();
       }),
       fetch(dashUrl, { signal: sig }).then(r => r.ok ? r.json() : null).catch(() => null),
+      // Verts side-car: index (small JSON) + raw Float32 binary. Loaded via
+      // arrayBuffer so it dodges Chrome's ~512 MB max JS-string limit that makes
+      // a full-resolution dashboard_data.json un-parseable on long clips.
+      fetch(vidxUrl, { signal: sig }).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(vbinUrl, { signal: sig }).then(r => r.ok ? r.arrayBuffer() : null).catch(() => null),
     ])
-    .then(([enriched, dash]) => {
+    .then(([enriched, dash, vidx, vbin]) => {
       if (sig.aborted) return;
       const frames = enriched.frames || [];
 
@@ -861,6 +932,32 @@ function Viewer({ plyUrl, jsonUrl }) {
           });
         });
       }
+
+      // Attach a flat Float32 vertex buffer (h.vbuf) per human. Prefer the binary
+      // side-car (block index → offset into the big buffer); else flatten any
+      // array-of-[x,y,z] verts merged from a small dashboard_data.json.
+      if (vidx && vbin) {
+        const f32 = new Float32Array(vbin);
+        const stride = vidx.stride;
+        (vidx.frames || []).forEach((blocks, i) => {
+          const humans = frames[i] && frames[i].humans;
+          if (!humans) return;
+          blocks.forEach((block, j) => {
+            if (!humans[j]) return;
+            const start = block * stride;
+            humans[j].vbuf = f32.subarray(start, start + stride);
+          });
+        });
+      }
+      frames.forEach(fd => (fd.humans || []).forEach(h => {
+        if (!h.vbuf && h.verts && h.verts.length) {
+          const fb = new Float32Array(h.verts.length * 3);
+          for (let k = 0; k < h.verts.length; k++) {
+            fb[k*3] = h.verts[k][0]; fb[k*3+1] = h.verts[k][1]; fb[k*3+2] = h.verts[k][2];
+          }
+          h.vbuf = fb;
+        }
+      }));
 
       frameDataRef.current = frames;
       setFrameData(frames);
@@ -942,7 +1039,7 @@ function Viewer({ plyUrl, jsonUrl }) {
     });
 
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat);
-    plane.rotation.x = -Math.PI / 2;
+    plane.rotation.x = Math.PI / 2;
     plane.position.set(cx, floorY + 0.01, cz);
     plane.visible = layers.heatmap;
     scene.add(plane);
@@ -1047,11 +1144,15 @@ function Viewer({ plyUrl, jsonUrl }) {
       const color = PALETTE[h.id % PALETTE.length];
       const pos   = fy(h.world_pos);
 
-      // SMPL-X surface mesh
+      // SMPL-X surface mesh — built from the flat Float32 buffer (h.vbuf), which
+      // comes from either verts.bin or a small dashboard_data.json (see loader).
+      const vb = h.vbuf;
       if (layers.mesh) {
-        if (h.verts && h.verts.length > 100 && facesRef.current) {
-          const buf = new Float32Array(h.verts.length * 3);
-          h.verts.forEach(([x, y, z], i) => { buf[i*3]=x; buf[i*3+1]=-y; buf[i*3+2]=z; });
+        if (vb && vb.length > 300 && facesRef.current) {
+          const buf = new Float32Array(vb.length);   // copy + Y-flip (OpenCV→Three)
+          for (let i = 0; i < vb.length; i += 3) {
+            buf[i] = vb[i]; buf[i+1] = -vb[i+1]; buf[i+2] = vb[i+2];
+          }
           const geo = new THREE.BufferGeometry();
           geo.setAttribute('position', new THREE.BufferAttribute(buf, 3));
           geo.setIndex(new THREE.BufferAttribute(facesRef.current.slice(), 1));
@@ -1060,9 +1161,11 @@ function Viewer({ plyUrl, jsonUrl }) {
             color, opacity: 0.82, transparent: true,
             side: THREE.DoubleSide, shininess: 30,
           })));
-        } else if (h.verts && h.verts.length > 0) {
-          const buf = new Float32Array(h.verts.length * 3);
-          h.verts.forEach(([x, y, z], i) => { buf[i*3]=x; buf[i*3+1]=-y; buf[i*3+2]=z; });
+        } else if (vb && vb.length > 0) {
+          const buf = new Float32Array(vb.length);
+          for (let i = 0; i < vb.length; i += 3) {
+            buf[i] = vb[i]; buf[i+1] = -vb[i+1]; buf[i+2] = vb[i+2];
+          }
           const geo = new THREE.BufferGeometry();
           geo.setAttribute('position', new THREE.BufferAttribute(buf, 3));
           group.add(new THREE.Points(geo, new THREE.PointsMaterial({
@@ -1234,9 +1337,6 @@ function Viewer({ plyUrl, jsonUrl }) {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const speedVal = summary && summary.avg_speed_mpf != null
-    ? `${(summary.avg_speed_mpf * 30).toFixed(2)} m/s` : '—';
-
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
@@ -1271,6 +1371,11 @@ function Viewer({ plyUrl, jsonUrl }) {
         return <MetricModal def={def} value={modalInfo.value} onClose={() => setModalInfo(null)} />;
       })()}
 
+      {/* Analytics panel (top-left) */}
+      <MetricsPanel
+        summary={summary} onOpenModal={handleOpenModal}
+      />
+
       {/* Layer + camera panel */}
       <LayerPanel
         layers={layers} onToggle={toggleLayer}
@@ -1288,30 +1393,8 @@ function Viewer({ plyUrl, jsonUrl }) {
           padding: '10px 18px 13px',
         }}>
 
-          {/* Stat pills row */}
-          {summary && (
-            <div style={{
-              display: 'flex', gap: 6, marginBottom: 10, overflowX: 'auto',
-              paddingBottom: 2,
-            }}>
-              <StatPill metricKey="social_engagement_pct"
-                value={`${summary.social_engagement_pct}%`} onOpenModal={handleOpenModal} />
-              <StatPill metricKey="avg_inter_human_distance"
-                value={`${summary.avg_inter_human_distance} m`} onOpenModal={handleOpenModal} />
-              <StatPill metricKey="scene_utilization_pct"
-                value={`${summary.scene_utilization_pct}%`} onOpenModal={handleOpenModal} />
-              <StatPill metricKey="gaze_convergence_events"
-                value={summary.gaze_convergence_events} onOpenModal={handleOpenModal} />
-              <StatPill metricKey="personal_space_pct"
-                value={`${summary.personal_space_pct ?? '—'}%`} onOpenModal={handleOpenModal} />
-              <StatPill metricKey="avg_speed_mpf"
-                value={speedVal} onOpenModal={handleOpenModal} />
-              <StatPill metricKey="approach_events"
-                value={summary.approach_events ?? '—'} onOpenModal={handleOpenModal} />
-              <StatPill metricKey="peak_occupancy"
-                value={summary.peak_occupancy ?? '—'} onOpenModal={handleOpenModal} />
-            </div>
-          )}
+          {/* Metrics moved to the floating Analytics panel (top-left) to free
+              vertical space here and avoid a horizontal scroll strip. */}
 
           {/* Playback controls */}
           <PlaybackBar

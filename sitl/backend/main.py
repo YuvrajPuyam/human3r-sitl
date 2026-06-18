@@ -10,6 +10,7 @@ import shutil
 import json
 
 from .pipeline import run_pipeline
+from .workers.analytics import compute_spatial_analytics
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR,  exist_ok=True)
@@ -109,6 +110,42 @@ async def get_results(job_id: str):
     }
 
 
+@app.get("/dev/jobs")
+async def list_disk_jobs():
+    """DEV: scan outputs/ for fully-processed jobs (enriched_data.json + scene.ply).
+
+    Returns them newest-first so the frontend can show an always-visible list of
+    loadable cases without depending on per-browser localStorage history.
+    """
+    results = []
+    for name in os.listdir("outputs"):
+        d = os.path.join("outputs", name)
+        if not os.path.isdir(d):
+            continue
+        json_path = os.path.join(d, "enriched_data.json")
+        ply_path  = os.path.join(d, "scene.ply")
+        if not (os.path.exists(json_path) and os.path.exists(ply_path)):
+            continue
+
+        frames = None
+        try:
+            with open(json_path) as f:
+                frames = json.load(f).get("metadata", {}).get("total_frames")
+        except Exception:
+            pass
+
+        results.append({
+            "job_id":   name,
+            "frames":   frames,
+            "mtime":    os.path.getmtime(json_path),
+            "ply_size": os.path.getsize(ply_path),
+            "has_heatmap": os.path.exists(os.path.join(d, "heatmap.png")),
+        })
+
+    results.sort(key=lambda r: r["mtime"], reverse=True)
+    return {"jobs": results}
+
+
 @app.get("/dev/load/{job_id}")
 async def dev_load(job_id: str):
     """DEV: register existing outputs on disk as a completed job — skips inference."""
@@ -138,6 +175,61 @@ async def dev_load(job_id: str):
         "log_url":     f"/outputs/{job_id}/inference_logs.txt",
         "heatmap_url": heatmap_url,
     }
+
+
+async def _run_analytics_only(job_id: str, params: dict | None = None):
+    try:
+        jobs[job_id].update({"status": "processing", "stage": 2, "progress": 0})
+        jobs[job_id]["logs"].append("Re-running spatial analytics...")
+        await compute_spatial_analytics(job_id, params)
+        jobs[job_id]["logs"].append("enriched_data.json updated.")
+        jobs[job_id].update({"stage": 3, "status": "completed", "progress": 100})
+        jobs[job_id]["logs"].append("Analytics complete.")
+    except Exception as e:
+        jobs[job_id].update({"status": "failed"})
+        jobs[job_id]["logs"].append(f"Analytics error: {e}")
+        raise
+
+
+@app.post("/rerun-analytics/{job_id}")
+async def rerun_analytics(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    intimate_zone: float | None = None,
+    personal_zone: float | None = None,
+    social_zone: float | None = None,
+    contact_thresh: float | None = None,
+    move_speed_mps: float | None = None,
+    fps_override: float | None = None,
+):
+    """Re-run only the analytics stage on existing inference outputs.
+
+    Optional query params override proxemics/speed thresholds without re-running
+    inference (e.g. /rerun-analytics/<id>?personal_zone=1.0&fps_override=30).
+    """
+    output_dir = f"outputs/{job_id}"
+    if not os.path.exists(f"{output_dir}/dashboard_data.json"):
+        raise HTTPException(
+            status_code=404,
+            detail="dashboard_data.json not found — run inference first",
+        )
+
+    if job_id not in jobs:
+        jobs[job_id] = {
+            "status": "queued", "video_path": None, "filename": f"[dev] {job_id}",
+            "stage": 0, "progress": 0, "logs": [],
+        }
+    elif jobs[job_id]["status"] == "processing":
+        raise HTTPException(status_code=409, detail="Job is already processing")
+
+    params = {k: v for k, v in {
+        "intimate_zone": intimate_zone, "personal_zone": personal_zone,
+        "social_zone": social_zone, "contact_thresh": contact_thresh,
+        "move_speed_mps": move_speed_mps, "fps_override": fps_override,
+    }.items() if v is not None}
+
+    background_tasks.add_task(_run_analytics_only, job_id, params or None)
+    return {"message": "Analytics re-run started", "job_id": job_id, "params": params}
 
 
 @app.get("/jobs")

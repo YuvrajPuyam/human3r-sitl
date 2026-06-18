@@ -2,12 +2,17 @@
 Action recognition for SITL analytics.
 
 Two modes (automatic fallback):
-  1. MotionBERT backbone — when checkpoint is present, extracts rich per-joint
-     temporal features from 3D SMPL-X joints, then classifies via improved
-     biomechanical rules applied in feature space.
+  1. MotionBERT-assisted — when the checkpoint is present, the backbone provides
+     a temporal-feature "motion intensity" signal (per-frame feature velocity)
+     that refines the run-vs-walk call. NOTE: this is NOT a trained action head —
+     the actual labels still come from the biomechanical rules below; the backbone
+     only sharpens locomotion intensity. (A trained classifier head is future work.)
   2. Biomechanical heuristics — always available, uses knee-lift ratio
      (fps-agnostic relative geometry) for walk/run/stationary, plus joint
      angles for sitting/reaching/bending.
+
+Speeds are expected in metres/second (analytics converts displacement using the
+clip's effective fps), so locomotion thresholds below are physical, not per-frame.
 
 Checkpoint download (optional):
   Download MB_pretrain.bin (~162 MB) or MB_lite.bin (~61 MB) from:
@@ -46,6 +51,11 @@ H36M = dict(
 
 ACTIONS        = ['stationary', 'walking', 'running', 'sitting', 'reaching', 'bending']
 WINDOW         = 15      # smoothing window (majority vote)
+# Locomotion speed thresholds in metres/second (physical, fps-independent).
+WALK_MIN_MPS       = 0.15   # below this, no walking even if knees swing
+STATIONARY_MPS     = 0.15   # legacy fallback: below = stationary
+RUN_MPS            = 1.80   # legacy fallback: above = running
+STATIONARY_GATE_MPS = 0.30  # seq-level gate: mean speed below = candidate standing
 MB_CHECKPOINT  = os.path.join(
     os.path.dirname(__file__), '../../third_party/MotionBERT/checkpoint/MB_lite.bin')
 MB_CHECKPOINT  = os.path.normpath(MB_CHECKPOINT)
@@ -86,7 +96,9 @@ def _try_load_motionbert():
             log.warning('MotionBERT: %d missing keys (may be OK for backbone-only load)', len(missing))
         backbone.eval()
         _mb_model = backbone
-        log.info('MotionBERT backbone loaded from %s', MB_CHECKPOINT)
+        log.info('MotionBERT backbone loaded from %s '
+                 '(used for motion-intensity refinement, not as a trained action head)',
+                 MB_CHECKPOINT)
         return _mb_model
     except Exception as e:
         log.warning('MotionBERT load failed (%s) — using heuristics', e)
@@ -190,8 +202,11 @@ def _knee_flexion(pose_53):
     """
     if pose_53 is None:
         return None
-    l = float(np.linalg.norm(pose_53[4]))
-    r = float(np.linalg.norm(pose_53[5]))
+    arr = np.asarray(pose_53, dtype=np.float64)
+    if arr.ndim < 2 or arr.shape[0] < 6:
+        return None
+    l = float(np.linalg.norm(arr[4]))
+    r = float(np.linalg.norm(arr[5]))
     return max(l, r)
 
 
@@ -242,21 +257,22 @@ def _locomotion_label(j17_t, speed, knee_lift):
       - speed:      pelvis displacement per processed frame (m/frame)
       - knee_lift:  normalised max knee lift (body-height-relative, fps-agnostic)
 
-    Knee lift values in Y-DOWN world coordinates:
-      -0.8 to -0.6 → knees far below pelvis = standing still
-      -0.5 to -0.3 → knees partially raised = walking gait swing phase
-      > -0.2       → knees near or above pelvis = running / jumping
+    Knee lift values in Y-DOWN world coordinates (ratio = knee_drop / body_h):
+      -0.75 to -0.55 → knees well below pelvis = standing / walking stance phase
+      -0.55 to -0.20 → knees partially raised = walking swing phase
+      > -0.20        → knees near or above pelvis = running / jumping
 
-    Speed alone is NOT sufficient for running — a tracking blip can produce
-    a large pelvis displacement on a clearly stationary pose. Running requires
-    the knees to actually rise (knee_lift > -0.20).
+    Threshold set to -0.75 because typical SMPL-X femur lengths place the
+    knee 0.40–0.52m below the pelvis with a body_h (pelvis→head) of ~0.70m,
+    giving ratios of −0.57 to −0.74.  The old −0.60 threshold was inside
+    this range and caused stance-phase walking frames to be labeled stationary.
     """
     # Running: knees raised to within 20% of body height from pelvis
     if knee_lift > -0.20:
         return 'running'
 
-    # Walking: moderate knee lift + meaningful speed
-    if knee_lift > -0.55 and speed > 0.008:
+    # Walking: knee within 75% of body height below pelvis + meaningful speed (m/s).
+    if knee_lift > -0.75 and speed > WALK_MIN_MPS:
         return 'walking'
 
     return 'stationary'
@@ -276,6 +292,10 @@ def _classify_with_motionbert(j_seq_T17_norm, speed_seq, backbone, pose_seq=None
     T = len(j_seq_T17_norm)
     CLIP = 64   # max frames per forward pass
 
+    # Sequence-level speed (non-zero only, so tracking gaps don't suppress the mean)
+    nonzero_speeds = [s for s in speed_seq if s > 0]
+    seq_speed = float(np.mean(nonzero_speeds)) if nonzero_speeds else 0.0
+
     # Slide a window across the sequence
     feature_vels = []   # temporal gradient magnitude of pooled features
     for start in range(0, T, CLIP):
@@ -292,9 +312,10 @@ def _classify_with_motionbert(j_seq_T17_norm, speed_seq, backbone, pose_seq=None
             vel = np.array([0.0])
         feature_vels.append(vel)
 
-    feat_vel = np.concatenate(feature_vels)   # (T-1,) or shorter
-    # Pad to T by repeating last value
-    feat_vel = np.append(feat_vel, feat_vel[-1] if len(feat_vel) else 0.0)
+    feat_vel = np.concatenate(feature_vels)   # (T - num_clips,) due to per-clip diff
+    # Pad to exactly T by repeating the last value (one gap per clip boundary)
+    last_val = feat_vel[-1] if len(feat_vel) else 0.0
+    feat_vel = np.concatenate([feat_vel, np.full(max(0, T - len(feat_vel)), last_val)])
 
     # Normalise feature velocity to [0,1] for the sequence
     fv_max = feat_vel.max()
@@ -312,13 +333,17 @@ def _classify_with_motionbert(j_seq_T17_norm, speed_seq, backbone, pose_seq=None
             labels.append(pose)
             continue
 
-        # Locomotion: use joint geometry + feature velocity as running signal
+        # Locomotion: use joint geometry + feature velocity as running signal.
+        # For frames where per-frame speed is 0 (first frame or tracking gap),
+        # fall back to sequence-level mean speed so the walking condition fires.
         body_h    = max(j17[H36M['pelvis'], 1] - j17[H36M['head'], 1], 0.1)
         knee_lift = _knee_lift_ratio(j17, body_h)
-        speed     = speed_seq[t]
+        speed     = speed_seq[t] if speed_seq[t] > 0 else seq_speed
 
-        # Feature velocity boosts the running signal
-        if fv_norm[t] > 0.60 and (knee_lift > 0.10 or speed > 0.05):
+        # Feature velocity + raised knee boosts running confidence.
+        # Speed alone is not used here because typical walking speeds (0.05–0.10 m/frame)
+        # would otherwise mislabel energetic walkers as running.
+        if fv_norm[t] > 0.60 and knee_lift > -0.20:
             labels.append('running')
         else:
             labels.append(_locomotion_label(j17, speed, knee_lift))
@@ -336,8 +361,10 @@ def _classify_heuristic(j_seq_T17, speed_seq, pose_seq=None):
 
     Sequence-level stationary gate: a genuine walking gait produces a cyclic
     knee-lift pattern with std > 0.04. SMPL-X reconstruction jitter on a
-    standing person yields std < 0.02. When the whole sequence shows no gait
-    cycle, non-sitting frames are forced to 'stationary' regardless of speed.
+    standing person yields std < 0.02. However, speed is the final arbiter —
+    if the person is moving (mean_speed > 0.015 m/frame), the gate does not
+    fire even when knee variance is low, since monocular SMPL-X reconstruction
+    often underestimates knee swing amplitude.
     """
     # ── Sequence-level knee-lift statistics ───────────────────────────────────
     kl_vals = []
@@ -345,12 +372,17 @@ def _classify_heuristic(j_seq_T17, speed_seq, pose_seq=None):
         body_h = max(_body_height(j17), 0.1)
         kl_vals.append(_knee_lift_ratio(j17, body_h))
 
-    kl_arr  = np.array(kl_vals)
-    kl_std  = float(np.std(kl_arr))
-    kl_mean = float(np.mean(kl_arr))
+    kl_arr     = np.array(kl_vals)
+    kl_std     = float(np.std(kl_arr))
+    kl_mean    = float(np.mean(kl_arr))
+    # Use only non-zero speeds so tracking-gap frames (speed=0) don't suppress the mean.
+    nonzero_speeds = [s for s in speed_seq if s > 0]
+    mean_speed = float(np.mean(nonzero_speeds)) if nonzero_speeds else 0.0
 
-    # Low variance + deeply dropped knees = no walking gait present
-    is_stationary_seq = kl_std < 0.04 and kl_mean < -0.50
+    # Low variance + deeply dropped knees + slow movement = no walking gait.
+    # Threshold adjusted to -0.65: realistic SMPL-X stance-phase knee-lift
+    # ratios sit in [-0.57, -0.74], so -0.50 incorrectly gated out walkers.
+    is_stationary_seq = kl_std < 0.04 and kl_mean < -0.65 and mean_speed < STATIONARY_GATE_MPS
 
     labels = []
     for t, j17 in enumerate(j_seq_T17):
@@ -429,9 +461,9 @@ def _legacy_classify(joints_seq, speed_seq):
     labels = []
     for t, (j, speed) in enumerate(zip(joints_seq, speed_seq)):
         j = np.array(j)
-        if speed < 0.008:
+        if speed < STATIONARY_MPS:
             labels.append('stationary')
-        elif speed < 0.10:
+        elif speed < RUN_MPS:
             labels.append('walking')
         else:
             labels.append('running')

@@ -84,9 +84,13 @@ def log_progress(current: int, total: int, label: str = "Frame"):
 # ── 3. VIDEO / DIRECTORY PARSING ──────────────────────────────────────────────
 
 def parse_seq_path(p):
+    # Returns (img_paths, tmpdirname, source_fps). source_fps is the native video
+    # frame rate; for an image directory it's unknown so we assume 30 (the common
+    # default) — downstream speed metrics scale by fps/subsample.
+    DEFAULT_FPS = 30.0
     if os.path.isdir(p):
         img_paths = sorted(glob.glob(f"{p}/*"))
-        return img_paths, None
+        return img_paths, None, DEFAULT_FPS
 
     cap = cv2.VideoCapture(p)
     if not cap.isOpened():
@@ -111,7 +115,7 @@ def parse_seq_path(p):
         cv2.imwrite(path, frame)
         img_paths.append(path)
     cap.release()
-    return img_paths, tmpdirname
+    return img_paths, tmpdirname, float(video_fps)
 
 
 # ── 4. INPUT PREPARATION ──────────────────────────────────────────────────────
@@ -458,7 +462,8 @@ def save_fused_scene_ply(pts3ds_other, conf_list, msks, colors, output_path,
 
 def export_dashboard_json(output_dir, cam_dict, smpl_params,
                            smpl_ids, all_smpl_verts, all_joints, smpl_faces,
-                           export_verts=False):
+                           export_verts=False,
+                           source_fps=30.0, subsample=1, effective_fps=30.0):
     """
     Write dashboard_data.json with world-frame positions, 45 skeleton joints,
     full SMPL-X vertices (for mesh rendering), and face topology (once in metadata).
@@ -476,6 +481,11 @@ def export_dashboard_json(output_dir, cam_dict, smpl_params,
             "up_axis":      "Y",
             "head_vertex":  HEAD_VERTEX,
             "exporter":     "SITL_engine_v2",
+            # Frame-rate provenance so analytics can convert per-frame displacement
+            # into physical m/s regardless of subsample.
+            "source_fps":    round(float(source_fps), 3),
+            "subsample":     int(subsample),
+            "effective_fps": round(float(effective_fps), 3),
             # Static face topology shared by every human every frame (~10k triangles, exported once)
             "smpl_faces":   smpl_faces,
         },
@@ -489,15 +499,26 @@ def export_dashboard_json(output_dir, cam_dict, smpl_params,
             "t": cam_dict['t'][i].tolist(),
         })
 
+    # Verts are exported to a Float32 binary side-car (verts.bin) rather than inline
+    # JSON. A full-resolution mesh (10475 verts/human) over a long clip pushes
+    # dashboard_data.json past Chrome's ~512 MB max JS-string length, so the browser
+    # cannot JSON.parse it. Binary loads via arrayBuffer() with no string limit and
+    # is ~5x smaller. verts_index.json maps each frame's humans to a block in the bin.
+    vert_blocks = []          # list of np.float32 [V,3] arrays, in iteration order
+    vert_index  = {"frames": []}
+    vert_count  = None
+
     total = len(all_smpl_verts)
     for f_id in range(total):
         log_progress(f_id + 1, total, "JSON frame")
         frame_data = {"frame_id": f_id, "humans": []}
+        frame_blocks = []     # block index per human, aligned to humans order
         verts  = all_smpl_verts[f_id]
         joints = all_joints[f_id]
 
         if verts.numel() == 0:
             manifest["frames"].append(frame_data)
+            vert_index["frames"].append(frame_blocks)
             continue
 
         for h_idx in range(len(smpl_ids[f_id])):
@@ -511,7 +532,11 @@ def export_dashboard_json(output_dir, cam_dict, smpl_params,
                 "shape":      smpl_params["shapes"][f_id][h_idx].cpu().tolist(),
             }
             if export_verts:
-                human_entry["verts"] = hv.tolist()
+                hv_np = hv.cpu().numpy().astype(np.float32)
+                if vert_count is None:
+                    vert_count = hv_np.shape[0]
+                frame_blocks.append(len(vert_blocks))
+                vert_blocks.append(hv_np)
 
             # 45 world-frame body joints for skeleton overlay
             if joints.numel() > 0 and h_idx < joints.shape[0]:
@@ -520,11 +545,23 @@ def export_dashboard_json(output_dir, cam_dict, smpl_params,
             frame_data["humans"].append(human_entry)
 
         manifest["frames"].append(frame_data)
+        vert_index["frames"].append(frame_blocks)
 
     json_path = os.path.join(output_dir, "dashboard_data.json")
     with open(json_path, "w") as f:
         json.dump(manifest, f)
     log(f"Dashboard JSON saved: {json_path}")
+
+    if export_verts and vert_blocks:
+        bin_path = os.path.join(output_dir, "verts.bin")
+        np.concatenate([b.reshape(-1) for b in vert_blocks]).astype(
+            "<f4").tofile(bin_path)
+        vert_index.update({"dtype": "float32", "vert_count": int(vert_count),
+                           "stride": int(vert_count) * 3})
+        with open(os.path.join(output_dir, "verts_index.json"), "w") as f:
+            json.dump(vert_index, f)
+        log(f"Verts binary saved: {bin_path} "
+            f"({os.path.getsize(bin_path) / 1048576:.0f} MB, {len(vert_blocks)} blocks)")
 
 
 # ── 8. MAIN ENTRY POINT ───────────────────────────────────────────────────────
@@ -547,7 +584,7 @@ def main():
     from src.dust3r.model     import ARCroco3DStereo
 
     # ── Parse input ──────────────────────────────────────────────────────────
-    img_paths, tmpdirname = parse_seq_path(args.seq_path)
+    img_paths, tmpdirname, source_fps = parse_seq_path(args.seq_path)
     if not img_paths:
         log(f"ERROR: No images found at {args.seq_path}")
         sys.exit(1)
@@ -555,7 +592,10 @@ def main():
     if args.max_frames is not None:
         img_paths = img_paths[:args.max_frames]
     img_paths = img_paths[::args.subsample]
-    log(f"Using {len(img_paths)} frames (subsample={args.subsample})")
+    # Effective frame rate of the exported sequence (processed frames per second).
+    effective_fps = source_fps / max(1, args.subsample)
+    log(f"Using {len(img_paths)} frames (subsample={args.subsample}, "
+        f"source_fps={source_fps:.1f}, effective_fps={effective_fps:.2f})")
 
     # ── Load model ───────────────────────────────────────────────────────────
     log(f"Loading model: {args.model_path}")
@@ -578,10 +618,22 @@ def main():
     elapsed = time.time() - t0
     log(f"Inference complete: {elapsed:.1f}s ({elapsed/len(views):.2f}s/frame)")
 
+    # Free the model and view tensors — both are large GPU allocations that are
+    # no longer needed after inference finishes.  Releasing them before
+    # process_outputs() prevents an OOM kill during post-processing on long videos.
+    del views, model
+    torch.cuda.empty_cache()
+
     # ── Process outputs ──────────────────────────────────────────────────────
     (pts3ds_other, colors, conf_other, cam_dict,
      all_smpl_verts, all_joints, smpl_faces, smpl_id, msks, smpl_params) = process_outputs(
         outputs, args, img_res)
+
+    # Free the raw inference outputs — process_outputs() has already extracted
+    # all needed data into separate variables.
+    del outputs
+    torch.cuda.empty_cache()
+    log("Memory freed after post-processing.")
 
     # ── Export scene PLY ─────────────────────────────────────────────────────
     ply_path = os.path.join(args.output_dir, "scene.ply")
@@ -594,11 +646,17 @@ def main():
         msk_thresh=args.msk_threshold,
     )
 
+    # Free the large per-frame arrays once PLY is written
+    del pts3ds_other, conf_other, msks, colors
+    torch.cuda.empty_cache()
+
     # ── Export dashboard JSON ────────────────────────────────────────────────
     export_dashboard_json(
         args.output_dir, cam_dict, smpl_params, smpl_id,
         all_smpl_verts, all_joints, smpl_faces,
-        export_verts=args.export_verts)
+        export_verts=args.export_verts,
+        source_fps=source_fps, subsample=args.subsample,
+        effective_fps=effective_fps)
 
     log(f"Engine complete. Outputs in: {args.output_dir}")
     log("1/1")   # final progress signal so inference.py sees 100%

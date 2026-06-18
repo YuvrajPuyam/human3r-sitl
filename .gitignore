@@ -71,12 +71,22 @@ outputs/
 # ── Point clouds ──────────────────────────────────────────────────────────────
 *.ply
 
-# ── Video files ───────────────────────────────────────────────────────────────
+# ── Video files (case-insensitive — Linux git is case-sensitive) ────────────────
 *.mp4
+*.MP4
 *.avi
+*.AVI
 *.mov
+*.MOV
 *.mkv
 *.webm
+
+# ── Windows / WSL cruft (NTFS alternate-data-stream metadata) ────────────────────
+*Zone.Identifier
+.DS_Store
+
+# ── Stray nested clone at repo root (model code lives in src/dust3r) ─────────────
+/dust3r/
 
 # ── SMPL-X / body model weights (downloaded separately) ──────────────────────
 src/models/smplx/
