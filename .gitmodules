@@ -1,0 +1,3 @@
+[submodule "sitl/third_party/MotionBERT"]
+	path = sitl/third_party/MotionBERT
+	url = https://github.com/Walter0807/MotionBERT.git

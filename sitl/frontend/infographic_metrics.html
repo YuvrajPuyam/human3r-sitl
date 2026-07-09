@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>BodyPlot — Analytics Metrics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #09090b;
+    color: #fafaf9;
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .canvas {
+    width: 1480px;
+    padding: 52px 56px 48px;
+    background: #09090b;
+  }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ── Header ── */
+  .header {
+    display: flex; align-items: center; gap: 20px;
+    margin-bottom: 40px;
+    padding-bottom: 28px;
+    border-bottom: 1px solid #27272a;
+  }
+  .header-text h1 {
+    font-size: 26px; font-weight: 800; letter-spacing: 0.12em;
+    color: #fafaf9; font-family: 'JetBrains Mono', monospace;
+  }
+  .header-text .subtitle {
+    font-size: 13px; color: #78716c; margin-top: 5px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── Metrics grid ── */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 28px;
+  }
+
+  .card {
+    border-radius: 10px;
+    border: 1px solid #27272a;
+    background: #111116;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    position: relative;
+  }
+  /* Left accent bar */
+  .card::before {
+    content: '';
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px;
+  }
+
+  .card-inner {
+    padding: 18px 18px 16px 22px;
+    flex: 1; display: flex; flex-direction: column; gap: 9px;
+  }
+
+  .card-top {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 8px;
+  }
+  .metric-name {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; font-family: 'JetBrains Mono', monospace;
+    line-height: 1.3;
+  }
+  .metric-num {
+    font-size: 28px; font-weight: 800; line-height: 1;
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap; flex-shrink: 0;
+  }
+
+  .divider {
+    height: 1px; background: #1c1917; margin: 0 0 2px;
+  }
+
+  .metric-desc {
+    font-size: 11.5px; color: #a8a29e; line-height: 1.5;
+    flex: 1;
+  }
+
+  /* Formula box */
+  .formula-box {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid #27272a;
+    border-radius: 5px;
+    padding: 8px 11px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; line-height: 1.5;
+    word-break: break-all;
+  }
+
+  /* Zone/type chips */
+  .chips {
+    display: flex; flex-wrap: wrap; gap: 4px;
+  }
+  .chip {
+    padding: 2px 8px; border-radius: 99px;
+    font-size: 9px; font-family: 'JetBrains Mono', monospace;
+    font-weight: 600; border: 1px solid; white-space: nowrap;
+  }
+
+  /* Research ref */
+  .research {
+    font-size: 9.5px; color: #44403c; font-style: italic;
+    line-height: 1.4;
+    border-top: 1px solid #1c1917; padding-top: 8px; margin-top: auto;
+  }
+
+  /* ── Legend row ── */
+  .legend {
+    display: flex; align-items: center; gap: 24px;
+    padding: 14px 18px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid #27272a;
+    border-radius: 8px;
+    flex-wrap: wrap;
+  }
+  .legend-title {
+    font-size: 8px; color: #44403c; letter-spacing: 0.16em;
+    text-transform: uppercase; font-family: 'JetBrains Mono', monospace;
+    font-weight: 700; white-space: nowrap;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 7px;
+  }
+  .legend-dot {
+    width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0;
+  }
+  .legend-text {
+    font-size: 10.5px; color: #78716c;
+  }
+  .legend-text strong {
+    color: #a8a29e; font-weight: 600;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    margin-top: 24px; padding-top: 20px;
+    border-top: 1px solid #1c1917;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .footer-left {
+    font-size: 10px; color: #44403c;
+    font-family: 'JetBrains Mono', monospace; letter-spacing: 0.08em;
+  }
+  .footer-right {
+    font-size: 10px; color: #44403c; font-style: italic;
+  }
+
+  /* ── Proxemics diagram at bottom ── */
+  .prox-diagram {
+    margin-top: 0;
+    padding: 20px 22px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid #27272a;
+    border-radius: 8px;
+    display: flex; align-items: center; gap: 40px;
+  }
+  .prox-title {
+    font-size: 8px; color: #44403c; letter-spacing: 0.16em;
+    text-transform: uppercase; font-family: 'JetBrains Mono', monospace;
+    font-weight: 700; white-space: nowrap; margin-bottom: 4px;
+  }
+  .prox-zones {
+    display: flex; align-items: center; gap: 0;
+    flex: 1;
+  }
+  .prox-zone {
+    height: 32px; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; position: relative;
+  }
+  .prox-zone-label {
+    font-size: 9px; font-family: 'JetBrains Mono', monospace;
+    font-weight: 700; letter-spacing: 0.06em; white-space: nowrap;
+  }
+  .prox-zone-dist {
+    font-size: 8px; color: #57534e; font-family: 'JetBrains Mono', monospace;
+  }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <!-- Header -->
+  <div class="header">
+    <svg width="52" height="52" viewBox="0 0 64 64" fill="none" style="flex-shrink:0">
+      <circle cx="32" cy="32" r="24" stroke="#d97706" stroke-width="1.5" fill="none"/>
+      <circle cx="32" cy="32" r="10" stroke="#d97706" stroke-width="1" fill="none" opacity="0.5"/>
+      <circle cx="32" cy="32" r="2.5" fill="#d97706"/>
+      <line x1="32" y1="4"  x2="32" y2="20" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="32" y1="44" x2="32" y2="60" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="4"  y1="32" x2="20" y2="32" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="44" y1="32" x2="60" y2="32" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    <div class="header-text">
+      <h1>BODYPLOT — ANALYTICS METRICS</h1>
+      <div class="subtitle">
+        8 behavioral indicators derived from 3D SMPL-X tracking · all computed per-frame, averaged over the full video
+      </div>
+    </div>
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center; flex-shrink:0">
+      <span style="padding:4px 10px; border-radius:4px; font-size:10px; font-family:'JetBrains Mono',monospace; font-weight:600; letter-spacing:0.1em; background:rgba(68,64,60,0.3); color:#78716c; border:1px solid #3c3836">
+        SMPL-X · 10,475 verts · 45 joints
+      </span>
+    </div>
+  </div>
+
+  <!-- Metrics grid (4 × 2) -->
+  <div class="grid">
+
+    <!-- 1. Social Engagement -->
+    <div class="card" style="--accent:#16a34a">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#16a34a;border-radius:10px 0 0 10px"></div>
+      <div class="card-inner">
+        <div class="card-top">
+          <div class="metric-name" style="color:#16a34a">Social<br/>Engagement</div>
+          <div class="metric-num" style="color:#16a34a">%</div>
+        </div>
+        <div class="divider"></div>
+        <div class="metric-desc">
+          Percentage of frames where any pair of subjects is within Hall's personal-distance zone, indicating active interpersonal interaction.
+        </div>
+        <div class="formula-box" style="color:#4ade80">
+          frames_with_pair ≤ 1.2 m<br/>────────────────── × 100<br/>total_frames
+        </div>
+        <div class="chips">
+          <span class="chip" style="color:#16a34a;border-color:rgba(22,163,74,0.4)">personal ≤ 1.2 m</span>
+          <span class="chip" style="color:#57534e;border-color:#27272a">per-frame</span>
+        </div>
+        <div class="research">Hall (1966) proxemics — personal zone: 45–120 cm. Canonical interpersonal space model.</div>
+      </div>
+    </div>
+
+    <!-- 2. Avg Inter-Subject Distance -->
+    <div class="card">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#d97706;border-radius:10px 0 0 10px"></div>
+      <div class="card-inner">
+        <div class="card-top">
+          <div class="metric-name" style="color:#d97706">Avg Inter-Subject<br/>Distance</div>
+          <div class="metric-num" style="color:#d97706">m</div>
+        </div>
+        <div class="divider"></div>
+        <div class="metric-desc">
+          Mean 3D Euclidean distance between all detected subjects, averaged across every pair and every frame in the video.
+        </div>
+        <div class="formula-box" style="color:#fcd34d">
+          mean( ‖pos_i − pos_j‖₂ )<br/>∀ pairs (i, j), ∀ frames
+        </div>
+        <div class="chips">
+          <span class="chip" style="color:#d97706;border-color:rgba(217,119,6,0.4)">3D Euclidean</span>
+          <span class="chip" style="color:#57534e;border-color:#27272a">all-pairs mean</span>
+        </div>
+        <div class="research">Spatial cohesion proxy — Cristani et al. (2011); Hall (1966). Lower = tighter group formation.</div>
+      </div>
+    </div>
+
+    <!-- 3. Scene Utilization -->
+    <div class="card">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#7c3aed;border-radius:10px 0 0 10px"></div>
+      <div class="card-inner">
+        <div class="card-top">
+          <div class="metric-name" style="color:#a78bfa">Scene<br/>Utilization</div>
+          <div class="metric-num" style="color:#a78bfa">%</div>
+        </div>
+        <div class="divider"></div>
+        <div class="metric-desc">
+          Percentage of 0.5 m³ voxels within the scene bounding box occupied by at least one subject at any point in the footage.
+        </div>
+        <div class="formula-box" style="color:#c4b5fd">
+          occupied 0.5 m voxels<br/>──────────────────── × 100<br/>total scene voxels
+        </div>
+        <div class="chips">
+          <span class="chip" style="color:#7c3aed;border-color:rgba(124,58,237,0.4)">voxel size 0.5 m</span>
+          <span class="chip" style="color:#57534e;border-color:#27272a">cumulative</span>
+        </div>
+        <div class="research">Spatial coverage and mobility range within the scene. High % = subjects explore the full space.</div>
+      </div>
+    </div>
+
+    <!-- 4. Gaze Convergence Events -->
+    <div class="card">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#ca8a04;border-radius:10px 0 0 10px"></div>
+      <div class="card-inner">
+        <div class="card-top">
+          <div class="metric-name" style="color:#f59e0b">Gaze<br/>Convergence</div>
+          <div class="metric-num" style="color:#f59e0b">#</div>
+        </div>
+        <div class="divider"></div>
+        <div class="metric-desc">
+          Frames where any pair's gaze rays have a closest-approach distance &lt; 1 m, indicating likely mutual visual attention between subjects.
+        </div>
+        <div class="formula-box" style="color:#fde68a">
+          gaze_vec = cross(body_up, shoulder)<br/><br/>closest_approach(ray_i, ray_j) &lt; 1.0 m<br/>→ convergence event
+        </div>
+        <div class="chips">
+          <span class="chip" style="color:#ca8a04;border-color:rgba(202,138,4,0.4)">ray closest-approach</span>
+        </div>
+        <div class="research">Mutual gaze: key social attention indicator — Kendon (1967); Argyle & Cook (1976).</div>
+      </div>
+    </div>
+
+    <!-- 5. Intimate Zone Violations -->
+    <div class="card">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#dc2626;border-radius:10px 0 0 10px"></div>
+      <div class="card-inner">
+        <div class="card-top">
+          <div class="metric-name" style="color:#f87171">Intimate Zone<br/>Violations</div>
+          <div class="metric-num" style="color:#f87171">%</div>
+        </div>
+        <div class="divider"></div>
+        <div class="metric-desc">
+          Percentage of frames where any pair is within Hall's intimate zone (&lt; 0.45 m), indicating very close physical proximity or contact.
+        </div>
+        <div class="formula-box" style="color:#fca5a5">
+          frames_with_pair &lt; 0.45 m<br/>────────────────── × 100<br/>total_frames
+        </div>
+        <div class="chips">
+          <span class="chip" style="color:#dc2626;border-color:rgba(220,38,38,0.4)">intimate &lt; 0.45 m</span>
+          <span class="chip" style="color:#57534e;border-color:#27272a">per-frame</span>
+        </div>
+        <div class="research">Hall (1966) intimate zone: 0–45 cm. Signals physical contact, crowding, or confrontation.</div>
+      </div>
+    </div>
+
+    <!-- 6. Average Movement Speed -->
+    <div class="card">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#0891b2;border-radius:10px 0 0 10px"></div>
+      <div class="card-inner">
+        <div class="card-top">
+          <div class="metric-name" style="color:#22d3ee">Average<br/>Movement Speed</div>
+          <div class="metric-num" style="color:#22d3ee">m/s</div>
+        </div>
+        <div class="divider"></div>
+        <div class="metric-desc">
+          Mean pelvis displacement per frame across all tracked subjects, converted to m/s. Jitter-filtered: inter-frame jumps &gt; 0.35 m excluded.
+        </div>
+        <div class="formula-box" style="color:#67e8f9">
+          speed = ‖pelvis_t − pelvis_{t-1}‖<br/><br/>mean(speed) × 30 fps  [m/s]<br/>filter: speed &gt; 0.35 m/frame → skip
+        </div>
+        <div class="chips">
+          <span class="chip" style="color:#0891b2;border-color:rgba(8,145,178,0.4)">pelvis velocity</span>
+          <span class="chip" style="color:#57534e;border-color:#27272a">jitter-filtered</span>
+        </div>
+        <div class="research">Pelvis velocity is the standard locomotion proxy in SMPL-X body tracking literature.</div>
+      </div>
+    </div>
+
+    <!-- 7. Approach Events -->
+    <div class="card">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#ea580c;border-radius:10px 0 0 10px"></div>
+      <div class="card-inner">
+        <div class="card-top">
+          <div class="metric-name" style="color:#fb923c">Approach<br/>Events</div>
+          <div class="metric-num" style="color:#fb923c">#</div>
+        </div>
+        <div class="divider"></div>
+        <div class="metric-desc">
+          Count of transitions where any pair's inter-subject distance derivative changes from non-negative to negative — a new approach begins.
+        </div>
+        <div class="formula-box" style="color:#fdba74">
+          Δdist = dist_t − dist_{t−1}<br/><br/>event when:<br/>prev_state ≠ approaching<br/>AND Δdist &lt; −0.03 m
+        </div>
+        <div class="chips">
+          <span class="chip" style="color:#ea580c;border-color:rgba(234,88,12,0.4)">per pair</span>
+          <span class="chip" style="color:#57534e;border-color:#27272a">state transition</span>
+        </div>
+        <div class="research">Approach–avoidance dynamics predict social engagement — Goffman (1971) interaction ritual.</div>
+      </div>
+    </div>
+
+    <!-- 8. Peak Occupancy -->
+    <div class="card">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#7c3aed;border-radius:10px 0 0 10px"></div>
+      <div class="card-inner">
+        <div class="card-top">
+          <div class="metric-name" style="color:#8b5cf6">Peak<br/>Occupancy</div>
+          <div class="metric-num" style="color:#8b5cf6">#</div>
+        </div>
+        <div class="divider"></div>
+        <div class="metric-desc">
+          Maximum number of subjects simultaneously detected and tracked by Human3R in any single video frame.
+        </div>
+        <div class="formula-box" style="color:#c4b5fd">
+          max( |subjects_per_frame| )<br/>∀ frames in video
+        </div>
+        <div class="chips">
+          <span class="chip" style="color:#7c3aed;border-color:rgba(124,58,237,0.4)">per-frame max</span>
+          <span class="chip" style="color:#57534e;border-color:#27272a">cumulative</span>
+        </div>
+        <div class="research">Group density indicator — crowding analysis and group dynamics (Stokols, 1972).</div>
+      </div>
+    </div>
+
+  </div><!-- /grid -->
+
+  <!-- Hall proxemics zone diagram -->
+  <div class="prox-diagram">
+    <div>
+      <div class="prox-title">Hall (1966) Proxemics — Spatial Zones</div>
+      <div style="font-size:10px;color:#57534e;font-family:'JetBrains Mono',monospace">
+        Used by: Social Engagement · Intimate Zone Violations · Interaction Edges in 3D Viewer
+      </div>
+    </div>
+
+    <!-- Zone bar -->
+    <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
+      <div style="display:flex; height:28px; border-radius:5px; overflow:hidden; border:1px solid #27272a;">
+        <div style="width:5%; background:rgba(220,38,38,0.5); display:flex;align-items:center;justify-content:center;">
+          <span style="font-size:7px;color:#f87171;font-family:'JetBrains Mono',monospace;font-weight:700;writing-mode:horizontal-tb">I</span>
+        </div>
+        <div style="width:15%; background:rgba(249,115,22,0.35); display:flex;align-items:center;justify-content:center;">
+          <span style="font-size:7px;color:#fb923c;font-family:'JetBrains Mono',monospace;font-weight:700">P</span>
+        </div>
+        <div style="width:40%; background:rgba(217,119,6,0.25); display:flex;align-items:center;justify-content:center;">
+          <span style="font-size:8px;color:#f59e0b;font-family:'JetBrains Mono',monospace;font-weight:700">SOCIAL</span>
+        </div>
+        <div style="flex:1; background:rgba(68,64,60,0.2); display:flex;align-items:center;justify-content:center;">
+          <span style="font-size:8px;color:#57534e;font-family:'JetBrains Mono',monospace;font-weight:700">PUBLIC  (not rendered as edge)</span>
+        </div>
+      </div>
+      <div style="display:flex; gap:0;">
+        <div style="width:5%; text-align:center">
+          <div style="font-size:8px;color:#f87171;font-family:'JetBrains Mono',monospace;font-weight:700">INTIMATE</div>
+          <div style="font-size:8px;color:#57534e;font-family:'JetBrains Mono',monospace">&lt; 0.45 m</div>
+        </div>
+        <div style="width:15%; text-align:center">
+          <div style="font-size:8px;color:#fb923c;font-family:'JetBrains Mono',monospace;font-weight:700">PERSONAL</div>
+          <div style="font-size:8px;color:#57534e;font-family:'JetBrains Mono',monospace">0.45–1.2 m</div>
+        </div>
+        <div style="width:40%; text-align:center">
+          <div style="font-size:8px;color:#f59e0b;font-family:'JetBrains Mono',monospace;font-weight:700">SOCIAL</div>
+          <div style="font-size:8px;color:#57534e;font-family:'JetBrains Mono',monospace">1.2–3.7 m</div>
+        </div>
+        <div style="flex:1; text-align:center">
+          <div style="font-size:8px;color:#44403c;font-family:'JetBrains Mono',monospace;font-weight:700">PUBLIC</div>
+          <div style="font-size:8px;color:#44403c;font-family:'JetBrains Mono',monospace">&gt; 3.7 m</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action labels legend -->
+    <div style="border-left:1px solid #27272a; padding-left:32px; flex-shrink:0">
+      <div class="prox-title" style="margin-bottom:10px">Action Classification</div>
+      <div style="display:flex; flex-direction:column; gap:5px;">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:10px;height:10px;border-radius:2px;background:#78716c;flex-shrink:0"></div>
+          <span style="font-size:10px;color:#a8a29e;font-family:'JetBrains Mono',monospace">stationary</span>
+          <span style="font-size:9px;color:#57534e;font-family:'JetBrains Mono',monospace;margin-left:4px">knee_std &lt; 0.04</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:10px;height:10px;border-radius:2px;background:#3b82f6;flex-shrink:0"></div>
+          <span style="font-size:10px;color:#a8a29e;font-family:'JetBrains Mono',monospace">walking</span>
+          <span style="font-size:9px;color:#57534e;font-family:'JetBrains Mono',monospace;margin-left:4px">kl &gt; −0.55 + speed</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:10px;height:10px;border-radius:2px;background:#22c55e;flex-shrink:0"></div>
+          <span style="font-size:10px;color:#a8a29e;font-family:'JetBrains Mono',monospace">running</span>
+          <span style="font-size:9px;color:#57534e;font-family:'JetBrains Mono',monospace;margin-left:4px">knee_lift &gt; −0.20</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:10px;height:10px;border-radius:2px;background:#a78bfa;flex-shrink:0"></div>
+          <span style="font-size:10px;color:#a8a29e;font-family:'JetBrains Mono',monospace">sitting</span>
+          <span style="font-size:9px;color:#57534e;font-family:'JetBrains Mono',monospace;margin-left:4px">knee_flex &gt; 0.65 rad</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:10px;height:10px;border-radius:2px;background:#f59e0b;flex-shrink:0"></div>
+          <span style="font-size:10px;color:#a8a29e;font-family:'JetBrains Mono',monospace">reaching</span>
+          <span style="font-size:9px;color:#57534e;font-family:'JetBrains Mono',monospace;margin-left:4px">wrist above shoulder</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:10px;height:10px;border-radius:2px;background:#ef4444;flex-shrink:0"></div>
+          <span style="font-size:10px;color:#a8a29e;font-family:'JetBrains Mono',monospace">bending</span>
+          <span style="font-size:9px;color:#57534e;font-family:'JetBrains Mono',monospace;margin-left:4px">torso_lean &lt; 0.35</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="footer-left">
+      BODYPLOT · Metrics computed by analytics.py · Derived from 3D SMPL-X body tracking (Human3R, ICLR 2026)
+    </div>
+    <div class="footer-right" style="color:#44403c;font-size:10px;font-family:'JetBrains Mono',monospace">
+      References: Hall (1966) · Kendon (1967) · Argyle & Cook (1976) · Goffman (1971) · Stokols (1972) · Cristani et al. (2011)
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

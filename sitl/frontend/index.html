@@ -3,20 +3,23 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SITL — Semantic Interaction Topology Lab</title>
+  <title>BodyPlot — Case File Analysis</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body, #root { height: 100%; overflow: hidden; }
     body {
-      background: #0d0d0d;
-      color: #e2e8f0;
+      background: #09090b;
+      color: #fafaf9;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       -webkit-font-smoothing: antialiased;
     }
-    input[type="range"] { accent-color: #3b82f6; }
+    input[type="range"] { accent-color: #d97706; }
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+    ::-webkit-scrollbar-thumb { background: #3c3836; border-radius: 2px; }
   </style>
 
   <!--
@@ -34,8 +37,13 @@
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 
-  <!-- Babel standalone — transforms type="text/babel" scripts in DOM order -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Babel standalone — transforms type="text/babel" scripts in DOM order.
+       Pinned to v7: Babel 8 defaults @babel/preset-react to the automatic JSX
+       runtime, which injects `import {jsx} from "react/jsx-runtime"` into the
+       output. Run as a plain script that throws "Cannot use import statement
+       outside a module" and blanks the page. v7 defaults to the classic
+       React.createElement runtime — no imports emitted. -->
+  <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
 </head>
 <body>
   <div id="root"></div>
@@ -44,7 +52,7 @@
     Load order: Viewer.jsx first so window.Viewer is defined before App.jsx runs.
     Babel processes these sequentially, so execution order is guaranteed.
   -->
-  <script type="text/babel" src="/frontend/Viewer.jsx?v=12"></script>
-  <script type="text/babel" src="/frontend/App.jsx?v=6"></script>
+  <script type="text/babel" src="/frontend/Viewer.jsx?v=20"></script>
+  <script type="text/babel" src="/frontend/App.jsx?v=10"></script>
 </body>
 </html>

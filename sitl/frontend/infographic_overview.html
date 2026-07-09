@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>BodyPlot — Overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #050507;
+    color: #fafaf9;
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ── Shared slide wrapper ── */
+  .slide {
+    width: 1480px;
+    padding: 52px 56px 48px;
+    background: #09090b;
+    position: relative;
+    outline: 2px solid #1c1917;   /* visible crop boundary for screenshots */
+  }
+  .slide-break {
+    width: 1480px;
+    height: 56px;
+    background: #050507;
+    display: flex; align-items: center; justify-content: center; gap: 16px;
+  }
+  .slide-break-line { flex: 1; height: 1px; background: #27272a; }
+  .slide-break-label {
+    font-size: 9px; letter-spacing: 0.22em;
+    font-family: 'JetBrains Mono', monospace; color: #3c3836;
+    text-transform: uppercase; white-space: nowrap;
+  }
+  /* Slide number badge — top-right corner */
+  .slide-num {
+    position: absolute; top: 20px; right: 56px;
+    font-size: 9px; font-family: 'JetBrains Mono', monospace;
+    color: #3c3836; letter-spacing: 0.18em;
+  }
+
+  /* ── Shared header ── */
+  .header {
+    display: flex; align-items: center; gap: 20px;
+    margin-bottom: 36px; padding-bottom: 24px;
+    border-bottom: 1px solid #27272a;
+  }
+  .header h1 {
+    font-size: 26px; font-weight: 800; letter-spacing: 0.14em;
+    color: #fafaf9; font-family: 'JetBrains Mono', monospace;
+  }
+  .header .sub {
+    font-size: 12.5px; color: #57534e; margin-top: 4px;
+    letter-spacing: 0.04em;
+  }
+  .badge {
+    padding: 3px 9px; border-radius: 4px;
+    font-size: 9.5px; font-family: 'JetBrains Mono', monospace;
+    font-weight: 600; letter-spacing: 0.10em;
+  }
+  .section-label {
+    font-size: 8px; font-weight: 700; letter-spacing: 0.20em;
+    text-transform: uppercase; font-family: 'JetBrains Mono', monospace;
+    color: #44403c; margin-bottom: 10px;
+  }
+
+  /* ── SLIDE 1 ── */
+
+  .s1-body {
+    display: flex; gap: 0; align-items: stretch;
+  }
+
+  /* Left column — pitch */
+  .s1-left {
+    width: 420px; flex-shrink: 0;
+    padding-right: 36px;
+    border-right: 1px solid #27272a;
+    display: flex; flex-direction: column; gap: 22px;
+  }
+
+  .pitch-headline {
+    font-size: 30px; font-weight: 900; line-height: 1.10;
+    color: #fafaf9; letter-spacing: -0.01em;
+  }
+  .pitch-headline em {
+    font-style: normal; color: #d97706;
+  }
+
+  .pitch-tagline {
+    font-size: 13px; color: #a8a29e; line-height: 1.7;
+  }
+  .pitch-tagline strong { color: #fafaf9; font-weight: 600; }
+
+  /* "No special hardware" chips */
+  .no-hardware {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .no-hw-label {
+    font-size: 8px; font-weight: 700; letter-spacing: 0.18em;
+    text-transform: uppercase; font-family: 'JetBrains Mono', monospace;
+    color: #44403c; margin-bottom: 4px;
+  }
+  .hw-row {
+    display: flex; align-items: center; gap: 9px;
+  }
+  .hw-x {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: rgba(220,38,38,0.15); border: 1px solid rgba(220,38,38,0.35);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 9px; color: #dc2626; font-weight: 700;
+  }
+  .hw-text {
+    font-size: 11.5px; color: #78716c;
+  }
+
+  .check-row {
+    display: flex; align-items: center; gap: 9px;
+  }
+  .hw-check {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: rgba(22,163,74,0.15); border: 1px solid rgba(22,163,74,0.35);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 9px; color: #16a34a; font-weight: 700;
+  }
+
+  /* Right column — pipeline */
+  .s1-right {
+    flex: 1;
+    padding-left: 36px;
+    display: flex; flex-direction: column; gap: 20px;
+  }
+
+  /* Pipeline visual */
+  .pipeline-vis {
+    display: flex; align-items: center; gap: 0;
+    flex: 1;
+  }
+
+  /* Input box */
+  .vis-box {
+    border-radius: 10px;
+    display: flex; flex-direction: column;
+    gap: 8px; flex-shrink: 0;
+  }
+  .vis-input {
+    width: 140px;
+    padding: 18px 16px;
+    background: rgba(68,64,60,0.14);
+    border: 1px solid rgba(68,64,60,0.45);
+  }
+  .vis-engine {
+    width: 200px;
+    padding: 18px 16px;
+    background: rgba(217,119,6,0.10);
+    border: 1.5px solid rgba(217,119,6,0.40);
+    position: relative;
+  }
+  .engine-glow {
+    position: absolute; inset: -1px; border-radius: 10px;
+    box-shadow: 0 0 32px rgba(217,119,6,0.12), 0 0 64px rgba(217,119,6,0.06);
+    pointer-events: none;
+  }
+  .vis-outputs {
+    display: flex; flex-direction: column; gap: 6px;
+    flex: 1;
+  }
+  .vis-out-card {
+    border-radius: 7px; padding: 11px 14px;
+    display: flex; flex-direction: column; gap: 3px;
+    position: relative;
+  }
+  .vis-out-label {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; font-family: 'JetBrains Mono', monospace;
+  }
+  .vis-out-spec {
+    font-size: 10.5px; color: #78716c; font-family: 'JetBrains Mono', monospace;
+    line-height: 1.4;
+  }
+
+  /* Arrow connector */
+  .vis-arrow {
+    display: flex; align-items: center;
+    flex-shrink: 0; width: 44px;
+  }
+  .vis-arrow svg { width: 44px; }
+
+  /* Fork arrow (engine → outputs) */
+  .vis-fork {
+    flex-shrink: 0; width: 52px;
+    display: flex; align-items: center;
+  }
+
+  /* Box labels */
+  .vis-box-label {
+    font-size: 8px; font-weight: 700; letter-spacing: 0.16em;
+    text-transform: uppercase; font-family: 'JetBrains Mono', monospace;
+    margin-bottom: 3px;
+  }
+  .vis-box-title {
+    font-size: 13px; font-weight: 700; line-height: 1.2;
+  }
+  .vis-box-detail {
+    font-size: 9.5px; color: #78716c; font-family: 'JetBrains Mono', monospace;
+    margin-top: 4px; line-height: 1.4;
+  }
+  .vis-box-ref {
+    font-size: 8.5px; font-style: italic; margin-top: 4px;
+    opacity: 0.6;
+  }
+
+  /* Analytics tier (below the reconstruction row) */
+  .analytics-tier {
+    padding: 16px 18px;
+    background: rgba(124,58,237,0.07);
+    border: 1px solid rgba(124,58,237,0.25);
+    border-radius: 8px;
+    display: flex; align-items: center; gap: 20px;
+  }
+  .at-label {
+    font-size: 8px; font-weight: 700; letter-spacing: 0.18em;
+    text-transform: uppercase; font-family: 'JetBrains Mono', monospace;
+    color: #a78bfa; white-space: nowrap; writing-mode: horizontal-tb;
+  }
+  .at-arrow {
+    color: #7c3aed; font-size: 14px; flex-shrink: 0;
+  }
+  .at-chips {
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .at-chip {
+    padding: 4px 11px; border-radius: 5px; font-size: 10px;
+    font-family: 'JetBrains Mono', monospace; font-weight: 600;
+    border: 1px solid; white-space: nowrap;
+  }
+
+  /* Foundation bar */
+  .foundation {
+    margin-top: 28px; padding: 14px 20px;
+    background: rgba(255,255,255,0.018);
+    border: 1px solid #27272a;
+    border-radius: 7px;
+    display: flex; align-items: center; gap: 0;
+  }
+  .found-label {
+    font-size: 8px; color: #44403c; letter-spacing: 0.18em;
+    text-transform: uppercase; font-family: 'JetBrains Mono', monospace;
+    font-weight: 700; white-space: nowrap; margin-right: 20px;
+  }
+  .found-items {
+    display: flex; align-items: stretch; gap: 0; flex: 1;
+  }
+  .found-item {
+    flex: 1; padding: 8px 14px;
+    border-left: 1px solid #27272a;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .found-name {
+    font-size: 11px; font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .found-role {
+    font-size: 9px; color: #57534e;
+  }
+
+  /* Footer */
+  .footer {
+    margin-top: 28px; padding-top: 18px;
+    border-top: 1px solid #1c1917;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .footer-l { font-size: 9.5px; color: #44403c; font-family: 'JetBrains Mono', monospace; }
+  .footer-r { display: flex; gap: 10px; }
+  .tag-pill {
+    padding: 2px 8px; border-radius: 99px;
+    font-size: 8.5px; font-family: 'JetBrains Mono', monospace;
+    border: 1px solid; letter-spacing: 0.05em;
+  }
+
+  /* ── SLIDE 2 ── */
+
+  .s2-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .cap-card {
+    border-radius: 10px;
+    background: #111116;
+    border: 1px solid #27272a;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    position: relative;
+  }
+  .cap-accent {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px; border-radius: 10px 0 0 10px;
+  }
+  .cap-inner {
+    padding: 18px 18px 16px 22px;
+    display: flex; flex-direction: column; gap: 10px;
+    flex: 1;
+  }
+  .cap-icon {
+    width: 36px; height: 36px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .cap-icon svg { width: 18px; height: 18px; }
+  .cap-name {
+    font-size: 14px; font-weight: 700; line-height: 1.2;
+    margin-top: 2px;
+  }
+  .cap-desc {
+    font-size: 11.5px; color: #a8a29e; line-height: 1.55;
+    flex: 1;
+  }
+  .cap-detail {
+    background: rgba(255,255,255,0.028);
+    border: 1px solid #27272a;
+    border-radius: 5px;
+    padding: 7px 10px;
+    font-size: 9.5px; font-family: 'JetBrains Mono', monospace;
+    color: #57534e; line-height: 1.5;
+  }
+  .cap-ref {
+    font-size: 9px; color: #44403c; font-style: italic;
+    border-top: 1px solid #1c1917; padding-top: 8px; margin-top: auto;
+  }
+
+  /* Use-cases row */
+  .use-cases {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 10px; margin-bottom: 0;
+  }
+  .uc-card {
+    border-radius: 8px; padding: 14px 16px;
+    background: rgba(255,255,255,0.018);
+    border: 1px solid #27272a;
+    display: flex; flex-direction: column; gap: 7px;
+  }
+  .uc-domain {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.10em;
+    text-transform: uppercase; font-family: 'JetBrains Mono', monospace;
+    color: #78716c;
+  }
+  .uc-examples {
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .uc-ex {
+    font-size: 10.5px; color: #57534e; line-height: 1.4;
+    padding-left: 10px; position: relative;
+  }
+  .uc-ex::before {
+    content: '›'; position: absolute; left: 0; color: #44403c;
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════
+     SLIDE 1 — WHAT IS BODYPLOT
+     ════════════════════════════════════════════════════════ -->
+<div class="slide">
+  <div class="slide-num">SLIDE 1 / 2</div>
+
+  <!-- Header -->
+  <div class="header">
+    <svg width="50" height="50" viewBox="0 0 64 64" fill="none" style="flex-shrink:0">
+      <circle cx="32" cy="32" r="24" stroke="#d97706" stroke-width="1.5" fill="none"/>
+      <circle cx="32" cy="32" r="10" stroke="#d97706" stroke-width="1" fill="none" opacity="0.5"/>
+      <circle cx="32" cy="32" r="2.5" fill="#d97706"/>
+      <line x1="32" y1="4"  x2="32" y2="20" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="32" y1="44" x2="32" y2="60" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="4"  y1="32" x2="20" y2="32" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="44" y1="32" x2="60" y2="32" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    <div>
+      <h1>BODYPLOT</h1>
+      <div class="sub">Semantic Interaction Topology Lab · arXiv 2510.06219 / ICLR 2026</div>
+    </div>
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center; flex-shrink:0">
+      <span class="badge" style="background:rgba(217,119,6,0.14);color:#f59e0b;border:1px solid rgba(217,119,6,0.38)">ICLR 2026</span>
+      <span class="badge" style="background:rgba(124,58,237,0.12);color:#a78bfa;border:1px solid rgba(124,58,237,0.35)">SMPL-X</span>
+      <span class="badge" style="background:rgba(5,150,105,0.12);color:#34d399;border:1px solid rgba(5,150,105,0.35)">MotionBERT</span>
+      <span class="badge" style="background:rgba(68,64,60,0.22);color:#78716c;border:1px solid #3c3836">Hall 1966</span>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div class="s1-body">
+
+    <!-- ── Left: Pitch ── -->
+    <div class="s1-left">
+
+      <div>
+        <div class="section-label">What is it</div>
+        <div class="pitch-headline">
+          3D Behavioral<br/>Intelligence from<br/><em>Monocular Video.</em>
+        </div>
+      </div>
+
+      <div class="pitch-tagline">
+        BodyPlot reconstructs every person in a scene as a full
+        <strong>3D body mesh</strong> and extracts
+        <strong>spatially grounded behavioral metrics</strong> —
+        using only a single RGB camera as input.
+        No calibration. No lab setup. No post-processing.
+      </div>
+
+      <!-- No special hardware -->
+      <div class="no-hardware">
+        <div class="no-hw-label">Traditional methods require</div>
+        <div class="hw-row">
+          <div class="hw-x">✕</div>
+          <span class="hw-text">Multi-camera motion capture arrays</span>
+        </div>
+        <div class="hw-row">
+          <div class="hw-x">✕</div>
+          <span class="hw-text">RGB-D depth cameras (Kinect, RealSense)</span>
+        </div>
+        <div class="hw-row">
+          <div class="hw-x">✕</div>
+          <span class="hw-text">Body-worn IMU sensor suits</span>
+        </div>
+        <div class="hw-row">
+          <div class="hw-x">✕</div>
+          <span class="hw-text">Controlled lab environments</span>
+        </div>
+        <div style="margin-top:10px">
+          <div class="no-hw-label">BodyPlot only needs</div>
+          <div class="check-row">
+            <div class="hw-check">✓</div>
+            <span class="hw-text" style="color:#a8a29e">Any phone, CCTV, or webcam video</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Who it's for -->
+      <div style="padding:14px 16px; background:rgba(255,255,255,0.025); border:1px solid #27272a; border-radius:7px;">
+        <div class="section-label" style="margin-bottom:8px">Grounded in social science</div>
+        <div style="font-size:11px; color:#78716c; line-height:1.65;">
+          Distance thresholds follow <span style="color:#a8a29e; font-weight:600">Hall's (1966) proxemics</span> —
+          intimate · personal · social · public zones.
+          Gaze convergence follows <span style="color:#a8a29e; font-weight:600">Kendon (1967)</span>.
+          All metrics have published definitions and are independently reproducible.
+        </div>
+      </div>
+
+    </div><!-- /s1-left -->
+
+    <!-- ── Right: Pipeline Visual ── -->
+    <div class="s1-right">
+
+      <div class="section-label">How it works — end to end</div>
+
+      <!-- Reconstruction row -->
+      <div class="pipeline-vis">
+
+        <!-- Input box -->
+        <div class="vis-box vis-input">
+          <div>
+            <!-- Film frame icon -->
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" style="margin-bottom:8px">
+              <rect x="3" y="5" width="26" height="22" rx="3" stroke="#78716c" stroke-width="1.5" fill="none"/>
+              <rect x="3" y="5" width="5" height="4" rx="1" fill="rgba(120,113,108,0.25)"/>
+              <rect x="3" y="13" width="5" height="4" rx="1" fill="rgba(120,113,108,0.25)"/>
+              <rect x="3" y="21" width="5" height="4" rx="1" fill="rgba(120,113,108,0.25)"/>
+              <rect x="24" y="5" width="5" height="4" rx="1" fill="rgba(120,113,108,0.25)"/>
+              <rect x="24" y="13" width="5" height="4" rx="1" fill="rgba(120,113,108,0.25)"/>
+              <rect x="24" y="21" width="5" height="4" rx="1" fill="rgba(120,113,108,0.25)"/>
+              <polygon points="13,12 13,20 21,16" fill="rgba(120,113,108,0.5)"/>
+            </svg>
+            <div class="vis-box-label" style="color:#57534e">Input</div>
+            <div class="vis-box-title" style="color:#a8a29e">Monocular<br/>Video</div>
+            <div class="vis-box-detail">mp4 · mov · avi<br/>any resolution<br/>any frame rate</div>
+          </div>
+        </div>
+
+        <!-- Arrow -->
+        <div class="vis-arrow">
+          <svg viewBox="0 0 44 20" fill="none" height="20">
+            <line x1="0" y1="10" x2="36" y2="10" stroke="#d97706" stroke-width="1.5"/>
+            <polygon points="34,5 44,10 34,15" fill="#d97706"/>
+          </svg>
+        </div>
+
+        <!-- Human3R Engine -->
+        <div class="vis-box vis-engine" style="position:relative">
+          <div class="engine-glow"></div>
+          <!-- Gear-ish icon -->
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none" style="margin-bottom:8px">
+            <circle cx="16" cy="16" r="5" stroke="#d97706" stroke-width="1.5" fill="none"/>
+            <circle cx="16" cy="16" r="2" fill="#d97706" opacity="0.6"/>
+            <line x1="16" y1="4" x2="16" y2="9" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="16" y1="23" x2="16" y2="28" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="4" y1="16" x2="9" y2="16" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="23" y1="16" x2="28" y2="16" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="7.5" y1="7.5" x2="11" y2="11" stroke="#d97706" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+            <line x1="21" y1="21" x2="24.5" y2="24.5" stroke="#d97706" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+            <line x1="24.5" y1="7.5" x2="21" y2="11" stroke="#d97706" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+            <line x1="11" y1="21" x2="7.5" y2="24.5" stroke="#d97706" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+          </svg>
+          <div class="vis-box-label" style="color:#d97706">Stage 01</div>
+          <div class="vis-box-title" style="color:#f59e0b">Human3R<br/>Engine</div>
+          <div class="vis-box-detail" style="margin-top:6px">Single forward pass<br/>ViT-L backbone<br/>CUDA RoPE kernels</div>
+          <div class="vis-box-ref" style="color:#d97706">Feng et al., ICLR 2026<br/>arXiv 2510.06219</div>
+        </div>
+
+        <!-- Fork arrow SVG -->
+        <div class="vis-fork">
+          <svg viewBox="0 0 52 120" fill="none" width="52" height="120" style="flex-shrink:0">
+            <!-- Top line to first output -->
+            <line x1="0" y1="60" x2="18" y2="60" stroke="#d97706" stroke-width="1.5"/>
+            <line x1="18" y1="60" x2="18" y2="20" stroke="#d97706" stroke-width="1.5"/>
+            <line x1="18" y1="20" x2="44" y2="20" stroke="#d97706" stroke-width="1.5"/>
+            <polygon points="42,15 52,20 42,25" fill="#d97706"/>
+            <!-- Middle line -->
+            <line x1="0" y1="60" x2="44" y2="60" stroke="#d97706" stroke-width="1.5"/>
+            <polygon points="42,55 52,60 42,65" fill="#d97706"/>
+            <!-- Bottom line -->
+            <line x1="18" y1="60" x2="18" y2="100" stroke="#d97706" stroke-width="1.5"/>
+            <line x1="18" y1="100" x2="44" y2="100" stroke="#d97706" stroke-width="1.5"/>
+            <polygon points="42,95 52,100 42,105" fill="#d97706"/>
+          </svg>
+        </div>
+
+        <!-- Outputs stack -->
+        <div class="vis-outputs">
+
+          <div class="vis-out-card" style="background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.28)">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#d97706;border-radius:7px 0 0 7px"></div>
+            <div class="vis-out-label" style="color:#f59e0b">SMPL-X Body Meshes</div>
+            <div class="vis-out-spec">10,475 vertices · 45 joints · pose + shape<br/>per person · per frame · world coordinates</div>
+          </div>
+
+          <div class="vis-out-card" style="background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.28)">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#7c3aed;border-radius:7px 0 0 7px"></div>
+            <div class="vis-out-label" style="color:#a78bfa">Dense Scene Point Cloud</div>
+            <div class="vis-out-spec">Fused 3D room geometry · binary PLY<br/>same world coordinate system as humans</div>
+          </div>
+
+          <div class="vis-out-card" style="background:rgba(8,145,178,0.08);border:1px solid rgba(8,145,178,0.28)">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#0891b2;border-radius:7px 0 0 7px"></div>
+            <div class="vis-out-label" style="color:#22d3ee">Camera Trajectory</div>
+            <div class="vis-out-spec">R, t per frame · metric scale recovered<br/>from body shape prior</div>
+          </div>
+
+        </div>
+      </div><!-- /pipeline-vis -->
+
+      <!-- Downward arrow to analytics -->
+      <div style="display:flex; align-items:center; gap:10px; padding: 2px 0 0 260px;">
+        <svg width="16" height="28" viewBox="0 0 16 28" fill="none">
+          <line x1="8" y1="0" x2="8" y2="20" stroke="#7c3aed" stroke-width="1.5"/>
+          <polygon points="3,18 8,28 13,18" fill="#7c3aed"/>
+        </svg>
+        <span style="font-size:9px;color:#44403c;font-family:'JetBrains Mono',monospace;letter-spacing:0.12em;text-transform:uppercase">SITL analytics layer</span>
+      </div>
+
+      <!-- Analytics tier -->
+      <div class="analytics-tier">
+        <div class="at-label">Stage 02 — SITL Analytics</div>
+        <div class="at-arrow">→</div>
+        <div class="at-chips">
+          <span class="at-chip" style="color:#f87171;border-color:rgba(220,38,38,0.35);background:rgba(220,38,38,0.08)">
+            Proxemics Zones
+          </span>
+          <span class="at-chip" style="color:#f59e0b;border-color:rgba(217,119,6,0.35);background:rgba(217,119,6,0.08)">
+            Gaze Direction
+          </span>
+          <span class="at-chip" style="color:#34d399;border-color:rgba(5,150,105,0.35);background:rgba(5,150,105,0.08)">
+            Action Labels
+          </span>
+          <span class="at-chip" style="color:#22d3ee;border-color:rgba(8,145,178,0.35);background:rgba(8,145,178,0.08)">
+            Contact Scores
+          </span>
+          <span class="at-chip" style="color:#a78bfa;border-color:rgba(124,58,237,0.35);background:rgba(124,58,237,0.08)">
+            Approach Events
+          </span>
+          <span class="at-chip" style="color:#fb923c;border-color:rgba(234,88,12,0.35);background:rgba(234,88,12,0.08)">
+            Floor Heatmap
+          </span>
+          <span class="at-chip" style="color:#78716c;border-color:#3c3836;background:rgba(68,64,60,0.12)">
+            Session Summary
+          </span>
+        </div>
+      </div>
+
+    </div><!-- /s1-right -->
+  </div><!-- /s1-body -->
+
+  <!-- Foundation bar -->
+  <div class="foundation">
+    <div class="found-label">Built on</div>
+    <div class="found-items">
+      <div class="found-item">
+        <div class="found-name" style="color:#f59e0b">Human3R</div>
+        <div class="found-role">3D reconstruction backbone · ICLR 2026</div>
+      </div>
+      <div class="found-item">
+        <div class="found-name" style="color:#a78bfa">SMPL-X</div>
+        <div class="found-role">Parametric body model · Pavlakos et al. 2019</div>
+      </div>
+      <div class="found-item">
+        <div class="found-name" style="color:#34d399">MotionBERT</div>
+        <div class="found-role">Temporal joint feature extractor · Wu et al. 2022</div>
+      </div>
+      <div class="found-item">
+        <div class="found-name" style="color:#22d3ee">Hall (1966)</div>
+        <div class="found-role">Proxemics framework · distance zone definitions</div>
+      </div>
+      <div class="found-item">
+        <div class="found-name" style="color:#78716c">FastAPI + Three.js</div>
+        <div class="found-role">Async backend · interactive 3D viewer</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="footer-l">BODYPLOT · Semantic Interaction Topology Lab · Human3R (Feng et al., ICLR 2026) · arXiv 2510.06219</div>
+    <div class="footer-r">
+      <span class="tag-pill" style="color:#d97706;border-color:rgba(217,119,6,0.4)">Python 3.11</span>
+      <span class="tag-pill" style="color:#78716c;border-color:#27272a">CUDA 12.4</span>
+      <span class="tag-pill" style="color:#78716c;border-color:#27272a">Single GPU</span>
+      <span class="tag-pill" style="color:#78716c;border-color:#27272a">No depth sensor</span>
+    </div>
+  </div>
+
+</div><!-- /slide 1 -->
+
+
+<!-- ── Break between slides (visible gap for screenshotting) ── -->
+<div class="slide-break">
+  <div class="slide-break-line"></div>
+  <div class="slide-break-label">── screenshot boundary ──</div>
+  <div class="slide-break-line"></div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════
+     SLIDE 2 — ANALYSIS CAPABILITIES & USE CASES
+     ════════════════════════════════════════════════════════ -->
+<div class="slide">
+  <div class="slide-num">SLIDE 2 / 2</div>
+
+  <!-- Header -->
+  <div class="header">
+    <svg width="50" height="50" viewBox="0 0 64 64" fill="none" style="flex-shrink:0">
+      <circle cx="32" cy="32" r="24" stroke="#d97706" stroke-width="1.5" fill="none"/>
+      <circle cx="32" cy="32" r="10" stroke="#d97706" stroke-width="1" fill="none" opacity="0.5"/>
+      <circle cx="32" cy="32" r="2.5" fill="#d97706"/>
+      <line x1="32" y1="4"  x2="32" y2="20" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="32" y1="44" x2="32" y2="60" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="4"  y1="32" x2="20" y2="32" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="44" y1="32" x2="60" y2="32" stroke="#d97706" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    <div>
+      <h1>BODYPLOT — ANALYSIS CAPABILITIES</h1>
+      <div class="sub">6 behavioral measurements derived from 3D SMPL-X tracking · grounded in published social science frameworks</div>
+    </div>
+    <div style="margin-left:auto; flex-shrink:0;">
+      <span class="badge" style="background:rgba(68,64,60,0.22);color:#78716c;border:1px solid #3c3836">
+        enriched_data.json · 3–5 MB per video
+      </span>
+    </div>
+  </div>
+
+  <!-- 3×2 capability grid -->
+  <div class="s2-grid">
+
+    <!-- 1. Hall Proxemics -->
+    <div class="cap-card">
+      <div class="cap-accent" style="background:#dc2626"></div>
+      <div class="cap-inner">
+        <div class="cap-icon" style="background:rgba(220,38,38,0.12);border:1px solid rgba(220,38,38,0.3)">
+          <svg viewBox="0 0 18 18" fill="none">
+            <circle cx="9" cy="9" r="7.5" stroke="#dc2626" stroke-width="1.2"/>
+            <circle cx="9" cy="9" r="5" stroke="#dc2626" stroke-width="1" opacity="0.6"/>
+            <circle cx="9" cy="9" r="2.5" stroke="#dc2626" stroke-width="1" opacity="0.35"/>
+            <circle cx="9" cy="9" r="1" fill="#dc2626"/>
+          </svg>
+        </div>
+        <div class="cap-name" style="color:#f87171">Proxemics Zones</div>
+        <div class="cap-desc">
+          Per-frame pairwise distance between all subjects, classified into Hall's four interpersonal space zones. Edges rendered in the 3D viewer: orange for personal, red for contact range.
+        </div>
+        <div class="cap-detail">
+          intimate &lt; 0.45 m  ·  personal 0.45–1.2 m<br/>
+          social 1.2–3.7 m  ·  public &gt; 3.7 m
+        </div>
+        <div class="cap-ref">Hall, E.T. (1966). The Hidden Dimension.</div>
+      </div>
+    </div>
+
+    <!-- 2. Gaze / Facing Direction -->
+    <div class="cap-card">
+      <div class="cap-accent" style="background:#d97706"></div>
+      <div class="cap-inner">
+        <div class="cap-icon" style="background:rgba(217,119,6,0.12);border:1px solid rgba(217,119,6,0.3)">
+          <svg viewBox="0 0 18 18" fill="none">
+            <circle cx="9" cy="9" r="4" stroke="#d97706" stroke-width="1.2"/>
+            <circle cx="9" cy="9" r="1.5" fill="#d97706" opacity="0.7"/>
+            <line x1="9" y1="1" x2="9" y2="5" stroke="#d97706" stroke-width="1.2" stroke-linecap="round"/>
+            <line x1="9" y1="13" x2="9" y2="17" stroke="#d97706" stroke-width="1.2" stroke-linecap="round" opacity="0.4"/>
+            <line x1="13" y1="9" x2="17" y2="9" stroke="#d97706" stroke-width="1.2" stroke-linecap="round" opacity="0.7"/>
+            <line x1="1" y1="9" x2="5" y2="9" stroke="#d97706" stroke-width="1.2" stroke-linecap="round" opacity="0.4"/>
+          </svg>
+        </div>
+        <div class="cap-name" style="color:#f59e0b">Gaze Direction</div>
+        <div class="cap-desc">
+          Body-facing vector computed per person per frame as the cross product of the normalized shoulder vector and spine vector — more stable than head orientation. Gaze convergence events logged when any pair's rays approach within 1 m.
+        </div>
+        <div class="cap-detail">
+          gaze = normalize(cross(body_up, shoulder))<br/>
+          convergence: closest_approach &lt; 1.0 m
+        </div>
+        <div class="cap-ref">Kendon (1967); Argyle & Cook (1976). Mutual gaze in social interaction.</div>
+      </div>
+    </div>
+
+    <!-- 3. Action Classification -->
+    <div class="cap-card">
+      <div class="cap-accent" style="background:#059669"></div>
+      <div class="cap-inner">
+        <div class="cap-icon" style="background:rgba(5,150,105,0.12);border:1px solid rgba(5,150,105,0.3)">
+          <svg viewBox="0 0 18 18" fill="none">
+            <circle cx="9" cy="4" r="2" stroke="#059669" stroke-width="1.2" fill="none"/>
+            <line x1="9" y1="6" x2="9" y2="11" stroke="#059669" stroke-width="1.2" stroke-linecap="round"/>
+            <line x1="9" y1="8" x2="6" y2="10" stroke="#059669" stroke-width="1.2" stroke-linecap="round"/>
+            <line x1="9" y1="8" x2="12" y2="10" stroke="#059669" stroke-width="1.2" stroke-linecap="round"/>
+            <line x1="9" y1="11" x2="6" y2="15" stroke="#059669" stroke-width="1.2" stroke-linecap="round"/>
+            <line x1="9" y1="11" x2="12" y2="15" stroke="#059669" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="cap-name" style="color:#34d399">Action Classification</div>
+        <div class="cap-desc">
+          Six action classes predicted per person per frame using MotionBERT temporal features and biomechanical rules on SMPL-X rotation vectors. Knee flexion angle from pose vectors distinguishes sitting from standing with high stability.
+        </div>
+        <div class="cap-detail">
+          <span style="color:#78716c">■</span> stationary &nbsp;
+          <span style="color:#3b82f6">■</span> walking &nbsp;
+          <span style="color:#22c55e">■</span> running<br/>
+          <span style="color:#a78bfa">■</span> sitting &nbsp;
+          <span style="color:#f59e0b">■</span> reaching &nbsp;
+          <span style="color:#ef4444">■</span> bending
+        </div>
+        <div class="cap-ref">Wu et al. (2022) MotionBERT · 15-frame majority-vote smoothing.</div>
+      </div>
+    </div>
+
+    <!-- 4. Surface Contact -->
+    <div class="cap-card">
+      <div class="cap-accent" style="background:#0891b2"></div>
+      <div class="cap-inner">
+        <div class="cap-icon" style="background:rgba(8,145,178,0.12);border:1px solid rgba(8,145,178,0.3)">
+          <svg viewBox="0 0 18 18" fill="none">
+            <line x1="2" y1="14" x2="16" y2="14" stroke="#0891b2" stroke-width="1.2" stroke-linecap="round"/>
+            <path d="M6 14 Q6 9 9 9 Q12 9 12 14" stroke="#0891b2" stroke-width="1.2" fill="none"/>
+            <line x1="9" y1="9" x2="9" y2="6" stroke="#0891b2" stroke-width="1" opacity="0.5"/>
+            <circle cx="9" cy="5" r="1.5" stroke="#0891b2" stroke-width="1" fill="none" opacity="0.5"/>
+          </svg>
+        </div>
+        <div class="cap-name" style="color:#22d3ee">Surface Contact</div>
+        <div class="cap-desc">
+          Contact score per person per frame computed via KD-tree nearest-neighbour query from the estimated foot position against the scene point cloud. Scores near 1.0 indicate the person is standing on or near a surface.
+        </div>
+        <div class="cap-detail">
+          foot = pelvis + [0, +0.95, 0]  (Y-DOWN)<br/>
+          score = exp(−d²)  where d = dist to PLY
+        </div>
+        <div class="cap-ref">Requires fused scene.ply from Human3R reconstruction stage.</div>
+      </div>
+    </div>
+
+    <!-- 5. Trajectory & Approach Dynamics -->
+    <div class="cap-card">
+      <div class="cap-accent" style="background:#ea580c"></div>
+      <div class="cap-inner">
+        <div class="cap-icon" style="background:rgba(234,88,12,0.12);border:1px solid rgba(234,88,12,0.3)">
+          <svg viewBox="0 0 18 18" fill="none">
+            <path d="M3 14 Q5 8 9 7 Q13 6 15 4" stroke="#ea580c" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+            <circle cx="3" cy="14" r="1.5" fill="#ea580c" opacity="0.7"/>
+            <circle cx="15" cy="4" r="1.5" fill="#ea580c"/>
+            <path d="M3 12 Q7 12 10 10" stroke="#ea580c" stroke-width="1" fill="none" stroke-linecap="round" opacity="0.4" stroke-dasharray="2,2"/>
+          </svg>
+        </div>
+        <div class="cap-name" style="color:#fb923c">Trajectories & Approach</div>
+        <div class="cap-desc">
+          Consistent person IDs maintained across frames for trajectory extraction. Approach events counted on state transitions: when a pair's Δdistance crosses −0.03 m/frame from non-negative. Retreat symmetrically tracked.
+        </div>
+        <div class="cap-detail">
+          approach: prev ≠ approaching AND Δd &lt; −0.03 m<br/>
+          speed filter: skip jumps &gt; 0.35 m/frame
+        </div>
+        <div class="cap-ref">Goffman (1971) Interaction ritual; approach–avoidance dynamics.</div>
+      </div>
+    </div>
+
+    <!-- 6. Floor Heatmap -->
+    <div class="cap-card">
+      <div class="cap-accent" style="background:#7c3aed"></div>
+      <div class="cap-inner">
+        <div class="cap-icon" style="background:rgba(124,58,237,0.12);border:1px solid rgba(124,58,237,0.3)">
+          <svg viewBox="0 0 18 18" fill="none">
+            <rect x="2" y="2" width="14" height="14" rx="2" stroke="#7c3aed" stroke-width="1.2" fill="none"/>
+            <circle cx="9" cy="9" r="4" fill="rgba(124,58,237,0.3)"/>
+            <circle cx="9" cy="9" r="2" fill="rgba(124,58,237,0.5)"/>
+            <circle cx="9" cy="9" r="0.8" fill="#a78bfa"/>
+          </svg>
+        </div>
+        <div class="cap-name" style="color:#a78bfa">Floor Heatmap</div>
+        <div class="cap-desc">
+          Bird's-eye occupancy density map generated from all pelvis XZ positions across the video. Gaussian-smoothed and rendered as a PNG texture on a floor plane in the 3D viewer. Shows spatial patterns without a top-down camera.
+        </div>
+        <div class="cap-detail">
+          grid: cell_size = 0.12 m  ·  σ = nx × 0.025<br/>
+          bounds from world-coordinate XZ extent + 0.7 m margin
+        </div>
+        <div class="cap-ref">Scene utilization: occupied 0.5 m voxels / total scene voxels × 100%.</div>
+      </div>
+    </div>
+
+  </div><!-- /s2-grid -->
+
+  <!-- Use cases -->
+  <div style="margin-bottom:20px">
+    <div class="section-label" style="margin-bottom:10px">Application domains</div>
+    <div class="use-cases">
+
+      <div class="uc-card" style="border-color:rgba(217,119,6,0.25)">
+        <div class="uc-domain" style="color:#d97706">Retail</div>
+        <div class="uc-examples">
+          <div class="uc-ex">Dwell time at displays</div>
+          <div class="uc-ex">Approach events per zone</div>
+          <div class="uc-ex">Staff positioning gaps</div>
+          <div class="uc-ex">Reach gesture frequency</div>
+        </div>
+      </div>
+
+      <div class="uc-card" style="border-color:rgba(22,163,74,0.25)">
+        <div class="uc-domain" style="color:#16a34a">Healthcare</div>
+        <div class="uc-examples">
+          <div class="uc-ex">Fall detection (bending → floor)</div>
+          <div class="uc-ex">Gait quality from hallway CCTV</div>
+          <div class="uc-ex">Physical therapy compliance</div>
+          <div class="uc-ex">Mobility range assessment</div>
+        </div>
+      </div>
+
+      <div class="uc-card" style="border-color:rgba(124,58,237,0.25)">
+        <div class="uc-domain" style="color:#a78bfa">Workplace Design</div>
+        <div class="uc-examples">
+          <div class="uc-ex">Collaboration density mapping</div>
+          <div class="uc-ex">Post-occupancy evaluation</div>
+          <div class="uc-ex">Social engagement over time</div>
+          <div class="uc-ex">Under-utilised space detection</div>
+        </div>
+      </div>
+
+      <div class="uc-card" style="border-color:rgba(8,145,178,0.25)">
+        <div class="uc-domain" style="color:#22d3ee">Clinical Research</div>
+        <div class="uc-examples">
+          <div class="uc-ex">Naturalistic proxemics study</div>
+          <div class="uc-ex">Joint attention measurement</div>
+          <div class="uc-ex">Gait disorder analysis</div>
+          <div class="uc-ex">No lab instrumentation</div>
+        </div>
+      </div>
+
+      <div class="uc-card" style="border-color:rgba(234,88,12,0.25)">
+        <div class="uc-domain" style="color:#fb923c">Sports & Coaching</div>
+        <div class="uc-examples">
+          <div class="uc-ex">Team spacing from broadcast</div>
+          <div class="uc-ex">Individual biomechanics</div>
+          <div class="uc-ex">Formation analysis</div>
+          <div class="uc-ex">Referee positioning</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="footer-l">
+      BODYPLOT · Analytics layer by SITL · Built on Human3R (Feng et al., ICLR 2026)
+    </div>
+    <div class="footer-r">
+      <span class="tag-pill" style="color:#78716c;border-color:#27272a">Hall 1966</span>
+      <span class="tag-pill" style="color:#78716c;border-color:#27272a">Kendon 1967</span>
+      <span class="tag-pill" style="color:#78716c;border-color:#27272a">Goffman 1971</span>
+      <span class="tag-pill" style="color:#78716c;border-color:#27272a">Wu et al. 2022</span>
+      <span class="tag-pill" style="color:#78716c;border-color:#27272a">Pavlakos et al. 2019</span>
+    </div>
+  </div>
+
+</div><!-- /slide 2 -->
+
+</body>
+</html>
