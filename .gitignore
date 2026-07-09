@@ -81,6 +81,10 @@ outputs/
 *.mkv
 *.webm
 
+# ── README media (committed on purpose — overrides the video/image ignores above)
+!docs/media/
+!docs/media/**
+
 # ── Windows / WSL cruft (NTFS alternate-data-stream metadata) ────────────────────
 *Zone.Identifier
 .DS_Store

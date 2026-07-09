@@ -6,8 +6,9 @@ Point a single camera at a room — a phone clip, a CCTV feed, a handheld pan �
 
 No depth sensor. No motion-capture suit. No multi-camera rig. One RGB video in, a 3D dashboard out.
 
-<!-- MEDIA: hero loop (~12s) — raw footage on the left dissolving into the reconstructed 3D scene orbiting on the right. Drop file at docs/media/hero.mp4 -->
-*A short walkthrough video will live here.*
+https://github.com/YuvrajPuyam/human3r-sitl/raw/master/docs/media/hero.mp4
+
+<sub>▶ If the player doesn't load inline, [watch the walkthrough here](docs/media/hero.mp4).</sub>
 
 ---
 
@@ -29,43 +30,37 @@ Each capability below renders live in the browser dashboard.
 
 Full SMPL-X body meshes for everyone in frame, a colored point cloud of the actual room, and the recovered camera trajectory — all in one shared coordinate system, from a single forward pass.
 
-<!-- MEDIA: orbit around a reconstructed scene showing meshes standing in the point-cloud room. docs/media/reconstruction.mp4 -->
-*Reconstruction clip placeholder.*
+![Reconstructed scene — SMPL-X body meshes standing inside the colored point-cloud room, with action labels and analytics overlays](docs/media/dashboard.png)
 
 ### Action recognition
 
 Every person gets a per-frame action label — standing, walking, running, sitting, reaching, bending — shown as a floating badge that tracks them through the scene.
 
-<!-- MEDIA: people moving with action-label pills following their heads. docs/media/actions.mp4 -->
-*Action-labels clip placeholder.*
+<sub>Visible as the floating labels tracking each person in the [dashboard capture above](docs/media/dashboard.png) and the [walkthrough video](docs/media/hero.mp4).</sub>
 
 ### Interaction analytics
 
 Proximity, gaze, and contact, computed per pair every frame and grounded in proxemics research. Color-coded links connect people by how close and how engaged they are; a marker fires when two people's gaze actually meets.
 
-<!-- MEDIA: two people approaching, proximity link turning from yellow to red, mutual-gaze marker. docs/media/interactions.mp4 -->
-*Interactions clip placeholder.*
+<sub>The color-coded proximity links between people are visible in the [dashboard capture above](docs/media/dashboard.png) and the [walkthrough video](docs/media/hero.mp4).</sub>
 
 ### Groups and dyads
 
 BodyPlot detects conversational groups (F-formations — people close *and* turned toward each other) as they form and dissolve, and produces a per-pair "relationship" report: time spent together, closest approach, share of mutual gaze, number of approaches.
 
-<!-- MEDIA: a cluster forming into a group, highlighted; dyad summary card. docs/media/groups.mp4 -->
-*Groups and dyads clip placeholder.*
+<sub>Group clustering and per-pair reports surface in the analytics panel of the [walkthrough video](docs/media/hero.mp4).</sub>
 
 ### Floor heatmap
 
 A bird's-eye density map of where people actually spent their time, with each person's path traced on top.
 
-<!-- MEDIA: top-down heatmap with trajectory lines. docs/media/heatmap.png -->
-*Heatmap image placeholder.*
+![Bird's-eye floor-occupancy heatmap with each person's trajectory traced on top](docs/media/heatmap.png)
 
 ### The dashboard
 
 Scrub the timeline, toggle layers, follow a subject, jump straight to detected events (meetings, group formations, the single closest contact). Everything runs in the browser with no install.
 
-<!-- MEDIA: dashboard screen capture — playback, layer toggles, analytics panel, timelines. docs/media/dashboard.mp4 -->
-*Dashboard clip placeholder.*
+![BodyPlot upload screen — drop in footage, choose a subsample rate, or reload a previously processed case](docs/media/upload.png)
 
 ---
 
