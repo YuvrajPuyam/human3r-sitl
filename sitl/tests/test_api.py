@@ -1,9 +1,15 @@
+# NOTE: This is a MANUAL end-to-end integration script, not a pytest test.
+# It needs a running server (uvicorn on :8000) and a GPU, so it is intentionally
+# named run_* (not test_*) so `pytest` skips it. Run it directly:
+#     python tests/test_api.py
+# The automated, hermetic unit tests live in test_analytics.py /
+# test_action_recognition.py / test_certify.py.
 import httpx
 import asyncio
 import os
 import json
 
-async def test_full_pipeline(video_file_path):
+async def run_full_pipeline(video_file_path):
     async with httpx.AsyncClient(timeout=None) as client:
         # 1. TEST UPLOAD
         print(f"📤 Uploading {video_file_path}...")
@@ -48,5 +54,5 @@ async def test_full_pipeline(video_file_path):
 
 if __name__ == "__main__":
     # Point this to a very short 2-3 second video for testing
-    TEST_VIDEO = "../examples/example1.mp4" 
-    asyncio.run(test_full_pipeline(TEST_VIDEO))
+    TEST_VIDEO = "../examples/example1.mp4"
+    asyncio.run(run_full_pipeline(TEST_VIDEO))

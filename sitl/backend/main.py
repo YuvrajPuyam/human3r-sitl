@@ -11,6 +11,7 @@ import json
 
 from .pipeline import run_pipeline
 from .workers.analytics import compute_spatial_analytics
+from .state import jobs, persist_jobs, load_jobs
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR,  exist_ok=True)
@@ -25,8 +26,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory job store — fine for local single-user use
-jobs: dict = {}
+# Restore any previously persisted jobs (survives uvicorn --reload / restarts).
+load_jobs()
 
 # Serve output files (PLY, JSON) directly to Three.js
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
@@ -50,6 +51,7 @@ async def upload_video(file: UploadFile = File(...)):
         "progress":   0,
         "logs":       [f"Uploaded: {file.filename}"],
     }
+    persist_jobs()
     return {"job_id": job_id}
 
 
@@ -68,6 +70,7 @@ async def start_pipeline(
     video_path = jobs[job_id]["video_path"]
     jobs[job_id]["status"]   = "queued"
     jobs[job_id]["subsample"] = subsample
+    persist_jobs()
 
     background_tasks.add_task(
         run_pipeline, job_id, jobs, subsample, video_path
@@ -167,6 +170,7 @@ async def dev_load(job_id: str):
         "progress":   100,
         "logs":       [f"[dev] Loaded from disk: {output_dir}"],
     }
+    persist_jobs()
     heatmap_url = f"/outputs/{job_id}/heatmap.png" if os.path.exists(f"{output_dir}/heatmap.png") else None
     return {
         "job_id":      job_id,
@@ -185,9 +189,11 @@ async def _run_analytics_only(job_id: str, params: dict | None = None):
         jobs[job_id]["logs"].append("enriched_data.json updated.")
         jobs[job_id].update({"stage": 3, "status": "completed", "progress": 100})
         jobs[job_id]["logs"].append("Analytics complete.")
+        persist_jobs()
     except Exception as e:
         jobs[job_id].update({"status": "failed"})
         jobs[job_id]["logs"].append(f"Analytics error: {e}")
+        persist_jobs()
         raise
 
 
@@ -219,6 +225,7 @@ async def rerun_analytics(
             "status": "queued", "video_path": None, "filename": f"[dev] {job_id}",
             "stage": 0, "progress": 0, "logs": [],
         }
+        persist_jobs()
     elif jobs[job_id]["status"] == "processing":
         raise HTTPException(status_code=409, detail="Job is already processing")
 
@@ -263,6 +270,7 @@ async def delete_job(job_id: str):
         os.remove(video_path)
 
     del jobs[job_id]
+    persist_jobs()
     return {"message": f"Job {job_id} deleted"}
 
 

@@ -1,0 +1,6 @@
+# Dev / test dependencies for the SITL backend.
+# The unit tests are hermetic: numpy + scipy + matplotlib only, no torch/GPU.
+pytest>=8.0
+numpy
+scipy
+matplotlib

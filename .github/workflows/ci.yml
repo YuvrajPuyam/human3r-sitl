@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Only the SITL analytics/action-recognition math is unit-tested here.
+# It is deliberately hermetic — numpy + scipy + matplotlib, no torch/GPU —
+# so CI runs on a plain ubuntu runner in seconds.
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install test dependencies
+        run: pip install -r sitl/requirements-dev.txt
+
+      - name: Run unit tests
+        working-directory: sitl
+        run: python -m pytest
